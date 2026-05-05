@@ -1,0 +1,35 @@
+# Dependencies
+node_modules/
+**/node_modules/
+
+# Python
+__pycache__/
+*.py[cod]
+.Python
+venv/
+.venv/
+*.egg-info/
+.pytest_cache/
+
+# Env & secrets
+.env
+.env.*
+!.env.example
+
+# Build / dist
+frontend/dist/
+**/dist/
+
+# IDE / OS
+.idea/
+.vscode/
+*.swp
+.DS_Store
+Thumbs.db
+
+# Logs
+*.log
+npm-debug.log*
+
+# Docker / local data (optional overrides)
+postgres_data/
