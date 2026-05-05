@@ -27,11 +27,31 @@ export default function DashboardModule() {
   const COLORS = ['#3b82f6', '#10b981', '#f59e0b', '#8b5cf6'];
 
   const recentActivities = [
-    { time: '10:23', action: '收貨完成', detail: 'PO-2024-0501 | TI IC-7805 | 5,000 PCS', status: 'success' },
-    { time: '10:15', action: '揀貨完成', detail: 'SO-2024-0342 | LOT-A1234 | 2,500 PCS', status: 'success' },
-    { time: '09:45', action: 'IQC 檢驗', detail: 'LOT-B5678 | 等待品管確認', status: 'warning' },
+    {
+      time: '10:23',
+      action: '收貨完成',
+      detail: 'PO-2024-0501 | IC-001 | 內部批號 IC-001-240501-0001 | 5,000 PCS',
+      status: 'success',
+    },
+    {
+      time: '10:15',
+      action: '揀貨完成',
+      detail: 'SO-2024-0342 | 內部條碼 240310-IC001-0001-W10 | 2,500 PCS',
+      status: 'success',
+    },
+    {
+      time: '09:45',
+      action: 'IQC 檢驗',
+      detail: '內部批號 IC-STM358-240420-0001 | 等待品管確認',
+      status: 'warning',
+    },
     { time: '09:20', action: '庫存調整', detail: 'A-01-02-01 | 盤點差異 +50 PCS', status: 'info' },
-    { time: '08:50', action: '換標作業', detail: 'VENDOR-123456 → INTERNAL-789012', status: 'success' },
+    {
+      time: '08:50',
+      action: '換標作業',
+      detail: '原廠條碼 → internal_barcode 240501-IC001-0001-W15',
+      status: 'success',
+    },
   ];
 
   return (
