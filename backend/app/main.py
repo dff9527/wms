@@ -1,7 +1,10 @@
 from fastapi import FastAPI
 from fastapi.middleware.cors import CORSMiddleware
 
+from app.api.v1 import receiving as receiving_v1
+
 app = FastAPI(title="WMS Semiconductor API", version="0.1.0")
+app.include_router(receiving_v1.router, prefix="/api/v1/receiving")
 
 app.add_middleware(
     CORSMiddleware,
