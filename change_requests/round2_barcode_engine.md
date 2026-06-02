@@ -65,7 +65,7 @@ git add -A && git commit -m "checkpoint before round2"
 
 # 種入 5 家供應商與條碼規則（Pipeline 不會自動 seed）
 # 依 spec §4.1 第 8 節 + §5.1 的 5 條 regex，寫成 seed_patterns.sql 後：
-psql postgresql://wms_user:wms_password@localhost:5432/wms_semiconductor -f seed_patterns.sql
+psql postgresql://wms_user:wms_password@localhost:5433/wms_semiconductor -f seed_patterns.sql
 ```
 
 > 安全提醒：`regex_rule` 來自資料表，`parser.py` 用 `re.match` 動態套用。種入規則時避免不受信任來源的 regex（ReDoS 風險）；`learner.py` 產出的規則先人工 review 再存。

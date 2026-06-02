@@ -22,8 +22,8 @@
 cd ~/projects/wms
 cp backend/.env.example backend/.env        # 填入 CLAUDE_API_KEY / SECRET_KEY
 docker compose -f docker/docker-compose.yml up -d db
-psql postgresql://wms_user:wms_password@localhost:5432/wms_semiconductor -f change_requests/schema.sql
-psql postgresql://wms_user:wms_password@localhost:5432/wms_semiconductor -f change_requests/seed_patterns.sql
+psql postgresql://wms_user:wms_password@localhost:5433/wms_semiconductor -f change_requests/schema.sql
+psql postgresql://wms_user:wms_password@localhost:5433/wms_semiconductor -f change_requests/seed_patterns.sql
 cd backend && pip install -r requirements.txt   # pyzbar 需先 apt-get install libzbar0
 
 # 1~4) 依序跑每一輪

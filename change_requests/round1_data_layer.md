@@ -79,7 +79,7 @@ docker compose -f docker/docker-compose.yml up -d db
 
 # 2) 手動建表：把 spec 第 4.1 節整段 SQL 存成 schema.sql 後執行
 #    （Pipeline B 不會幫你做這步）
-psql postgresql://wms_user:wms_password@localhost:5432/wms_semiconductor -f schema.sql
+psql postgresql://wms_user:wms_password@localhost:5433/wms_semiconductor -f schema.sql
 ```
 
 ---

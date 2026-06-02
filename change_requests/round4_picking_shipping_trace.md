@@ -66,7 +66,7 @@ git checkout -b feature/round4-picking-shipping-trace
 git add -A && git commit -m "checkpoint before round4"
 
 # 建 FIFO/FEFO 查詢索引（spec §6.3.4，Pipeline 不會建）
-psql postgresql://wms_user:wms_password@localhost:5432/wms_semiconductor <<'SQL'
+psql postgresql://wms_user:wms_password@localhost:5433/wms_semiconductor <<'SQL'
 CREATE INDEX IF NOT EXISTS idx_inventory_fifo ON inventory_lots(internal_sku, receive_date) WHERE lot_status='AVAILABLE';
 CREATE INDEX IF NOT EXISTS idx_inventory_fefo ON inventory_lots(internal_sku, expiry_date) WHERE lot_status='AVAILABLE' AND expiry_date IS NOT NULL;
 CREATE INDEX IF NOT EXISTS idx_inventory_vendor_sku ON inventory_lots(vendor_id, internal_sku) WHERE lot_status='AVAILABLE';
