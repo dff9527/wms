@@ -1,3 +1,30 @@
 fastapi==0.104.1
 uvicorn[standard]==0.24.0
 python-dotenv==1.0.0
+pydantic==2.5.0
+pydantic-settings==2.1.0
+python-multipart==0.0.6
+
+# 資料庫 (Round 1+)
+sqlalchemy==2.0.23
+psycopg2-binary==2.9.9
+
+# 條碼處理 (Round 2+)
+python-barcode==0.15.1
+pillow==10.1.0
+pyzbar==0.1.9              # 需系統套件: apt-get install libzbar0
+
+# AI 條碼學習 (Round 2)
+anthropic==0.7.0
+
+# 認證與安全
+python-jose[cryptography]==3.3.0
+passlib[bcrypt]==1.7.4
+
+# 快取與任務佇列 (選用)
+redis==5.0.1
+celery==5.3.4
+
+# 工具與測試
+python-dateutil==2.8.2
+pytest==7.4.3
