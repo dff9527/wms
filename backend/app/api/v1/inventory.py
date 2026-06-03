@@ -6,7 +6,8 @@ from app.database import get_db   # type: ignore
 from app.services.inventory_service import InventoryService
 from app.schemas.inventory import LotOut, LotListQuery, AdjustRequest, SplitRequest
 
-router = APIRouter(prefix="/inventory", tags=["Inventory"])
+# main.py mounts this under prefix="/api/v1/inventory"; do not add a second prefix here
+router = APIRouter(tags=["Inventory"])
 
 
 @router.get("/lots", response_model=List[LotOut])

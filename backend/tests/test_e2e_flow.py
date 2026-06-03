@@ -15,8 +15,12 @@ pattern + warehouses/locations). The test seeds the small master data it needs
 It exercises: receive -> IQC PASS -> inventory list -> allocate (FIFO) ->
 confirm pick -> confirm shipment -> packing list -> trace forward.
 """
+import os
 import sys
 from datetime import date, datetime
+
+# allow `python tests/test_e2e_flow.py` from backend/ by putting backend/ on sys.path
+sys.path.insert(0, os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
 
 from fastapi.testclient import TestClient
 
@@ -24,7 +28,8 @@ from app.main import app
 from app.db.session import SessionLocal
 from app.models.item import Item
 from app.models.vendor import Vendor, VendorItem
-from app.models.order import SalesOrder, SOLine
+from app.models.order import SalesOrder, SOLine, PickTask
+from app.models.inventory import InventoryLot, InventoryTransaction
 
 client = TestClient(app)
 
@@ -45,6 +50,29 @@ def check(label, cond, extra=""):
         _failed += 1
     print(f"  [{mark}] {label}" + (f"  -> {extra}" if extra else ""))
     return cond
+
+
+def cleanup_test_data():
+    """Remove rows from prior runs so the flow is isolated (FIFO would otherwise
+    allocate an older leftover lot instead of this run's lot)."""
+    db = SessionLocal()
+    try:
+        so_ids = [r[0] for r in db.query(SalesOrder.so_id).filter(SalesOrder.so_number.like("SO-E2E-%")).all()]
+        line_ids = [r[0] for r in db.query(SOLine.so_line_id).filter(SOLine.so_id.in_(so_ids)).all()] if so_ids else []
+        lot_ids = [r[0] for r in db.query(InventoryLot.lot_id).filter(InventoryLot.internal_sku == SKU).all()]
+        if line_ids or lot_ids:
+            db.query(PickTask).filter(
+                (PickTask.so_line_id.in_(line_ids)) | (PickTask.lot_id.in_(lot_ids))
+            ).delete(synchronize_session=False)
+        if lot_ids:
+            db.query(InventoryTransaction).filter(InventoryTransaction.lot_id.in_(lot_ids)).delete(synchronize_session=False)
+            db.query(InventoryLot).filter(InventoryLot.lot_id.in_(lot_ids)).delete(synchronize_session=False)
+        if so_ids:
+            db.query(SOLine).filter(SOLine.so_id.in_(so_ids)).delete(synchronize_session=False)
+            db.query(SalesOrder).filter(SalesOrder.so_id.in_(so_ids)).delete(synchronize_session=False)
+        db.commit()
+    finally:
+        db.close()
 
 
 def seed_master_data():
@@ -78,6 +106,7 @@ def seed_master_data():
 
 def main():
     print("WMS end-to-end flow")
+    cleanup_test_data()
     vendor_id, so_number = seed_master_data()
     print(f"  seeded item={SKU}, vendor_id={vendor_id}, so={so_number}")
 

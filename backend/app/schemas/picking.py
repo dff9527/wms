@@ -14,7 +14,7 @@ class AllocationDetail(BaseModel):
     vendorLotCode: str
     qty: float
     receiveDate: str
-    location: str
+    location: Optional[str] = None
 
 
 class LineAllocationResult(BaseModel):
@@ -39,7 +39,7 @@ class AllocateResponse(BaseModel):
 
 class PickWaveTaskOut(BaseModel):
     sequence: int
-    location: str
+    location: Optional[str] = None
     internalSku: str
     internalLotNumber: str
     internalBarcode: str

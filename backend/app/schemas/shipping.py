@@ -11,7 +11,7 @@ class ConfirmShipmentRequest(BaseModel):
 class ShipmentDetail(BaseModel):
     internalLotNumber: str
     qty: float
-    location: str
+    location: Optional[str] = None
 
 
 class ConfirmShipmentResponse(BaseModel):

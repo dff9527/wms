@@ -12,7 +12,7 @@ class LotOut(BaseModel):
     vendor_pn: Optional[str]
     quantity_on_hand: int
     quantity_reserved: int
-    location_code: Optional[str] # Joined from storage_locations
+    location_code: Optional[str] = None  # Joined from storage_locations (set after model_validate)
     lot_status: str
     iqc_result: Optional[str]
     manufacture_date: Optional[date]

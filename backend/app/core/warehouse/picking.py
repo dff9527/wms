@@ -50,6 +50,7 @@ class PickingEngine:
             "internalSku": internal_sku,
             "requestedQty": requested_qty,
             "strategy": strategy,
+            "strategy_used": strategy,
             "allocatedQty": total_allocated,
             "details": [d for r in results for d in r.get('allocation_details', [])],
             "results": results
@@ -89,7 +90,7 @@ class PickingEngine:
                 "vendorLotCode": lot.vendor_lot_code,
                 "qty": pick_qty,
                 "receiveDate": lot.receive_date.isoformat()[:10] if isinstance(lot.receive_date, datetime.datetime) else str(lot.receive_date)[:10],
-                "location": lot.location_id
+                "location": str(lot.location_id) if lot.location_id is not None else None
             })
             
             # Create PickTask (schema: so_line_id, lot_id, from_location_id, pick_qty, status)
@@ -170,7 +171,7 @@ class PickingEngine:
 
             wave.append({
                 "sequence": i,
-                "location": task.from_location_id,
+                "location": str(task.from_location_id) if task.from_location_id is not None else None,
                 "internalSku": lot.internal_sku if lot else '',
                 "internalLotNumber": lot.internal_lot_number if lot else '',
                 "internalBarcode": lot.internal_barcode if lot else '',

@@ -53,7 +53,16 @@ def confirm_pick(request: ConfirmPickRequest, db: Session = Depends(get_db)):
 
 @router.get("/tasks")
 def list_tasks(db: Session = Depends(get_db)):
-    # Simple pass-through to engine or direct query if needed
     from app.models.order import PickTask
     tasks = db.query(PickTask).all()
-    return [t.__dict__ for t in tasks]
+    return [
+        {
+            "task_id": t.task_id,
+            "so_line_id": t.so_line_id,
+            "lot_id": t.lot_id,
+            "from_location_id": t.from_location_id,
+            "pick_qty": t.pick_qty,
+            "status": t.status,
+        }
+        for t in tasks
+    ]

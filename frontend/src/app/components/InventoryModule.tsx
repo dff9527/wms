@@ -22,13 +22,21 @@ export default function InventoryModule() {
      ];
 
   const getStatusBadge = (status: InventoryLotRowStatus) => {
-    const statusConfig = {
+    // backend lot_status is UPPERCASE (AVAILABLE/RESERVED/QC_HOLD/QUARANTINE/EXPIRED/SHIPPED);
+    // normalize and fall back for any status not in the map so the row never crashes.
+    const statusConfig: Record<string, { label: string; className: string }> = {
       available: { label: '可用', className: 'bg-green-100 text-green-700' },
       reserved: { label: '已預留', className: 'bg-blue-100 text-blue-700' },
       expiring_soon: { label: '即將到期', className: 'bg-yellow-100 text-yellow-700' },
       quarantine: { label: '隔離', className: 'bg-red-100 text-red-700' },
-       };
-    const config = statusConfig[status];
+      qc_hold: { label: '待檢', className: 'bg-amber-100 text-amber-700' },
+      expired: { label: '已過期', className: 'bg-red-100 text-red-700' },
+      shipped: { label: '已出貨', className: 'bg-slate-100 text-slate-600' },
+    };
+    const config = statusConfig[String(status ?? '').toLowerCase()] ?? {
+      label: String(status ?? '—'),
+      className: 'bg-slate-100 text-slate-700',
+    };
     return <span className={`px-2 py-1 rounded text-xs font-medium ${config.className}`}>{config.label}</span>;
      };
 

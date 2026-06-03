@@ -63,7 +63,7 @@ class ShippingService:
             details.append({
                 "internalLotNumber": lot.internal_lot_number,
                 "qty": task.pick_qty,
-                "location": lot.location_id
+                "location": str(lot.location_id) if lot.location_id is not None else None
             })
 
         for line in lines:
@@ -101,7 +101,7 @@ class ShippingService:
                 "internalLotNumber": lot.internal_lot_number if lot else '',
                 "internalSku": lot.internal_sku if lot else '',
                 "qty": task.pick_qty,
-                "location": lot.location_id if lot else None,
+                "location": str(lot.location_id) if lot and lot.location_id is not None else None,
                 "receiveDate": lot.receive_date.isoformat()[:10] if lot and lot.receive_date else ''
             })
 
