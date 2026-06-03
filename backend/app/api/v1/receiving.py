@@ -3,165 +3,195 @@
 現階段回傳與 inventory_lots 對齊的 mock；之後接上 SQLAlchemy 查詢即可。
 """
 
-from copy import deepcopy
 from typing import Any, Dict, List, Optional
 
-from fastapi import APIRouter, HTTPException, Query
+from fastapi import APIRouter, Depends, HTTPException, Query
+from sqlalchemy.orm import Session
+
+from app.core.warehouse.receiving import ReceivingService
+from app.core.warehouse.putaway import PutAwayEngine
+from app.schemas.receiving import IQCRequest, ReceiveRequest, ReceiveResponse, ScanResult
+from app.db.session import get_db
 
 router = APIRouter(tags=["receiving"])
-
-# ── Mock：對齊說明文件「新結構」（snake_case JSON） ─────────────────────────
-
-_MOCK_ITEMS: List[Dict[str, Any]] = [
-    {
-        "lot_id": 1,
-        "po_number": "PO-2024-0501",
-        "vendor_name": "Texas Instruments",
-        "internal_sku": "IC-001",
-        "internal_lot_number": "IC-001-240501-0001",
-        "internal_barcode": "240501-IC001-0001-W15",
-        "vendor_pn": "TI-7805",
-        "vendor_lot_code": "TI2024W15A",
-        "vendor_date_code": "2024W15",
-        "original_barcode": "1PTI7805...9DTI2024W15A",
-        "description": "5V 穩壓 IC",
-        "quantity_on_hand": 5000,
-        "unit": "PCS",
-        "lot_status": "PENDING_RECEIVE",
-        "receive_date": "2024-05-01T10:20:00",
-        "location_code": None,
-        "iqc_result": "PENDING",
-        "iqc_date": None,
-        "iqc_inspector": None,
-        "quality_notes": None,
-    },
-    {
-        "lot_id": 2,
-        "po_number": "PO-2024-0501",
-        "vendor_name": "Texas Instruments",
-        "internal_sku": "IC-001",
-        "internal_lot_number": "IC-001-240501-0002",
-        "internal_barcode": "240501-IC001-0002-W15",
-        "vendor_pn": "TI-7805",
-        "vendor_lot_code": "TI2024W15B",
-        "vendor_date_code": "2024W15",
-        "original_barcode": "",
-        "description": "5V 穩壓 IC",
-        "quantity_on_hand": 3000,
-        "unit": "PCS",
-        "lot_status": "QC_HOLD",
-        "receive_date": "2024-05-01T14:00:00",
-        "location_code": "QC-01-01",
-        "iqc_result": "PENDING",
-        "iqc_date": None,
-        "iqc_inspector": None,
-        "quality_notes": None,
-    },
-    {
-        "lot_id": 3,
-        "po_number": "PO-2024-0515",
-        "vendor_name": "Texas Instruments",
-        "internal_sku": "IC-001",
-        "internal_lot_number": "IC-001-240515-0001",
-        "internal_barcode": "240515-IC001-0001-W18",
-        "vendor_pn": "TPS54331DR",
-        "vendor_lot_code": "TI2024W18C",
-        "vendor_date_code": "2024W18",
-        "original_barcode": "",
-        "description": "DC/DC Converter",
-        "quantity_on_hand": 8000,
-        "unit": "PCS",
-        "lot_status": "AVAILABLE",
-        "receive_date": "2024-05-15T09:00:00",
-        "location_code": "A-01-02-03",
-        "iqc_result": "PASS",
-        "iqc_date": "2024-05-15T11:30:00",
-        "iqc_inspector": "王小明",
-        "quality_notes": None,
-    },
-    {
-        "lot_id": 4,
-        "po_number": "PO-2024-0502",
-        "vendor_name": "STMicroelectronics",
-        "internal_sku": "IC-STM358",
-        "internal_lot_number": "IC-STM358-240502-0001",
-        "internal_barcode": "240502-STM358-0001-A42",
-        "vendor_pn": "LM358DT",
-        "vendor_lot_code": "ST2024042",
-        "vendor_date_code": "0424",
-        "original_barcode": "",
-        "description": "雙運算放大器",
-        "quantity_on_hand": 3000,
-        "unit": "PCS",
-        "lot_status": "QC_HOLD",
-        "receive_date": "2024-05-02T08:45:00",
-        "location_code": None,
-        "iqc_result": "PENDING",
-        "iqc_date": None,
-        "iqc_inspector": None,
-        "quality_notes": None,
-    },
-    {
-        "lot_id": 5,
-        "po_number": "PO-2024-0503",
-        "vendor_name": "ON Semiconductor",
-        "internal_sku": "IC-ON2222",
-        "internal_lot_number": "IC-ON2222-240503-0001",
-        "internal_barcode": "240503-ON2222-0001-X9",
-        "vendor_pn": "2N2222TA",
-        "vendor_lot_code": "ON240501",
-        "vendor_date_code": "240501",
-        "original_barcode": "",
-        "description": "NPN 電晶體",
-        "quantity_on_hand": 10000,
-        "unit": "PCS",
-        "lot_status": "AVAILABLE",
-        "receive_date": "2024-05-03T07:30:00",
-        "location_code": "B-02-01-04",
-        "iqc_result": "PASS",
-        "iqc_date": "2024-05-03T10:00:00",
-        "iqc_inspector": "李小華",
-        "quality_notes": None,
-    },
-]
 
 
 @router.get("/list")
 def get_receiving_list(
     po_number: Optional[str] = Query(None, description="採購單號篩選"),
     status: Optional[str] = Query(None, description="lot_status 篩選"),
+    db: Session = Depends(get_db),
 ):
-    rows = deepcopy(_MOCK_ITEMS)
-
-    if po_number:
-        rows = [r for r in rows if r["po_number"] == po_number]
-    if status:
-        rows = [r for r in rows if str(r["lot_status"]).upper() == status.upper()]
+    """
+    Query inventory_lots with lot_status in QC_HOLD/PENDING_RECEIVE (or iqc_result PENDING)
+    Serialize to ReceivingItemApiRaw snake_case shape.
+    """
+    service = ReceivingService(db)
+    items = service.list_pending(po_number=po_number, status=status)
+    
+    # Map ORM objects to dict for JSON response matching existing frontend expectations
+    rows = []
+    for item in items:
+        rows.append({
+            "lot_id": item.lot_id,
+            "po_number": item.po_number,
+            "vendor_name": item.vendor_name,
+            "internal_sku": item.internal_sku,
+            "internal_lot_number": item.internal_lot_number,
+            "internal_barcode": item.internal_barcode,
+            "vendor_pn": item.vendor_pn,
+            "vendor_lot_code": item.vendor_lot_code,
+            "vendor_date_code": item.vendor_date_code,
+            "original_barcode": item.original_barcode,
+            "description": item.description,
+            "quantity_on_hand": item.quantity_on_hand,
+            "unit": item.unit,
+            "lot_status": item.lot_status,
+            "receive_date": item.receive_date.isoformat() if item.receive_date else None,
+            "location_code": item.location_code,
+            "iqc_result": item.iqc_result,
+            "iqc_date": item.iqc_date.isoformat() if item.iqc_date else None,
+            "iqc_inspector": item.iqc_inspector,
+            "quality_notes": item.quality_notes,
+        })
 
     return {"items": rows, "total": len(rows)}
 
 
 @router.get("/{lot_id}")
-def get_receiving_detail(lot_id: int):
-    for r in _MOCK_ITEMS:
-        if r["lot_id"] == lot_id:
-            return r
-    raise HTTPException(status_code=404, detail="Lot not found")
+def get_receiving_detail(lot_id: int, db: Session = Depends(get_db)):
+    service = ReceivingService(db)
+    item = service.get_lot_by_id(lot_id)
+    
+    if not item:
+        raise HTTPException(status_code=404, detail="Lot not found")
+
+    return {
+        "lot_id": item.lot_id,
+        "po_number": item.po_number,
+        "vendor_name": item.vendor_name,
+        "internal_sku": item.internal_sku,
+        "internal_lot_number": item.internal_lot_number,
+        "internal_barcode": item.internal_barcode,
+        "vendor_pn": item.vendor_pn,
+        "vendor_lot_code": item.vendor_lot_code,
+        "vendor_date_code": item.vendor_date_code,
+        "original_barcode": item.original_barcode,
+        "description": item.description,
+        "quantity_on_hand": item.quantity_on_hand,
+        "unit": item.unit,
+        "lot_status": item.lot_status,
+        "receive_date": item.receive_date.isoformat() if item.receive_date else None,
+        "location_code": item.location_code,
+        "iqc_result": item.iqc_result,
+        "iqc_date": item.iqc_date.isoformat() if item.iqc_date else None,
+        "iqc_inspector": item.iqc_inspector,
+        "quality_notes": item.quality_notes,
+    }
 
 
 @router.post("/scan")
-def scan_stub():
-    raise HTTPException(status_code=501, detail="掃描 API 尚未實作")
+def scan_barcode(
+    payload: Dict[str, Any], 
+    db: Session = Depends(get_db)
+):
+    """
+    Accept ScanBarcodeRequest {barcode, vendorId?}. Use BarcodeParser to parse and return ScanResult.
+    Do not create any DB rows. Return 400 if barcode cannot be parsed.
+    """
+    barcode = payload.get("barcode") or payload.get("scannedBarcode")
+    vendor_id = payload.get("vendorId") or payload.get("vendor_id")
+
+    if not barcode:
+        raise HTTPException(status_code=400, detail="Barcode is required")
+
+    service = ReceivingService(db)
+    try:
+        result = service.scan_barcode(barcode, vendor_id)
+        # Map internal ScanResult to API response shape
+        return {
+            "success": True,
+            "parsed": {
+                "vendorPn": result.vendor_pn,
+                "qty": result.qty,
+                "lotCode": result.lot_code,
+                "dateCode": result.date_code,
+            },
+            "patternUsed": result.pattern_used,
+        }
+    except ValueError as e:
+        raise HTTPException(status_code=400, detail=str(e))
 
 
 @router.post("/receive")
-def receive_stub():
-    raise HTTPException(status_code=501, detail="確認收貨 API 尚未實作")
+def receive_item(
+    request: ReceiveRequest,
+    db: Session = Depends(get_db)
+):
+    """
+    Parse body into ReceiveRequest (po_number, barcode/scannedBarcode, vendor_id, qty).
+    Call ReceivingService(db).process_receipt(...). Return ReceiveResponse.
+    On PO mismatch let service raise and translate to HTTP 400 with detail message.
+    """
+    service = ReceivingService(db)
+    
+    try:
+        lot_data = service.process_receipt(
+            po_number=request.poNumber,
+            scanned_barcode=request.scannedBarcode or "",
+            vendor_id=request.vendorId,
+            quantity=request.quantity
+        )
+        
+        # Generate label URL placeholder based on internal barcode
+        label_url = f"/api/v1/labels/{lot_data.internal_barcode}.pdf"
+
+        return ReceiveResponse(
+            success=True,
+            lotId=lot_data.lot_id,
+            internalLotNumber=lot_data.internal_lot_number,
+            internalBarcode=lot_data.internal_barcode,
+            labelUrl=label_url
+        )
+    except ValueError as e:
+        raise HTTPException(status_code=400, detail=str(e))
 
 
 @router.post("/iqc")
-def iqc_stub():
-    raise HTTPException(status_code=501, detail="IQC API 尚未實作")
+def complete_iqc(
+    request: IQCRequest,
+    db: Session = Depends(get_db)
+):
+    """
+    Parse IQCRequest {lotId, result, inspector, notes?}. 
+    Call ReceivingService(db).complete_iqc(lot_id, result, inspector, notes).
+    Return {success, status, suggestedLocation?} (suggestedLocation optionally from PutAwayEngine.suggest_location when result==PASS).
+    """
+    service = ReceivingService(db)
+    
+    try:
+        updated_lot = service.complete_iqc(
+            lot_id=request.lotId,
+            result=request.result,
+            inspector=request.inspector,
+            notes=request.notes
+        )
+        
+        response_data = {
+            "success": True,
+            "status": updated_lot.lot_status,
+        }
+        
+        # If passed QC, suggest a location for put-away
+        if request.result == "PASS":
+            engine = PutAwayEngine(db)
+            suggested_loc = engine.suggest_location(updated_lot)
+            if suggested_loc:
+                response_data["suggestedLocation"] = suggested_loc
+        
+        return response_data
+    except ValueError as e:
+        raise HTTPException(status_code=400, detail=str(e))
 
 
 @router.post("/print-label")

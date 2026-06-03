@@ -1,0 +1,14 @@
+{
+  "pipeline": "b-web",
+  "final_verdict": "",
+  "debug_iterations_used": 5,
+  "last_validation": "VALIDATION_RESULT: TYPE_ERROR\nValidation project path: /Users/jerryc1122/projects/wms\n\n===== FRONTEND VALIDATION =====\n===== frontend: npm install [PASS] =====\nexit_code: 0\nup to date, audited 314 packages in 386ms\n\n43 packages are looking for funding\n  run `npm fund` for details\n\nfound 0 vulnerabilities\n\n===== frontend: typecheck [FAIL] =====\nexit_code: 2\nsrc/app/api/inventory.ts(22,5): error TS2353: Object literal may only specify known properties, and 'manufactureDate' does not exist in type ",
+  "last_audit": "",
+  "gap_analysis": [
+    {
+      "type": "type_error_unfixed",
+      "detail": "src/app/api/inventory.ts(22,5): error TS2353: Object literal may only specify known properties, and 'manufactureDate' does not exist in type 'InventoryLotRow'.",
+      "suggestion": "Add explicit correct/wrong pattern for this error in spec"
+    }
+  ]
+}
