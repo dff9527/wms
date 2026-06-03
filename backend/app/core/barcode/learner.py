@@ -94,4 +94,3 @@ class PatternInferenceEngine:
                 return json.loads(json_match.group())
             raise ValueError(f"無法解析 Claude 回應")
 
-═══════════════════════════════════════════════════════════════

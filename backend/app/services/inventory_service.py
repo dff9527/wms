@@ -82,4 +82,3 @@ class InventoryService:
             executed_by=executed_by,
         )
 
-═══════════════════════════════════════════════════════════════

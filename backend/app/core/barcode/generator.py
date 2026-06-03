@@ -78,4 +78,3 @@ class BarcodeGenerator:
             # e.g., ^FO50,50^A0N,30,30^FD{internal_barcode}^FS
         }
 
-═══════════════════════════════════════════════════════════════

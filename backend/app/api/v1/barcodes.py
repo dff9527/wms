@@ -45,4 +45,3 @@ def get_patterns(vendor_id: int | None = None, db: Session = Depends(get_db)):
     """
     return list_patterns(db, vendor_id=vendor_id)
 
-═══════════════════════════════════════════════════════════════

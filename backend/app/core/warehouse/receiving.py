@@ -26,12 +26,12 @@ class ReceivingService:
         quantity: int,
         executed_by: str = "SYSTEM",
         device_id: Optional[str] = None,
-     ) -> ReceiveResponse:
-         """
+    ) -> ReceiveResponse:
+        """
         Atomic receiving flow: Parse → Validate PO → Create Lot → Write Transaction.
         Raises HTTPException 400 on failure.
-         """
-         # 1. Parse Barcode
+        """
+        # 1. Parse Barcode
         # FIX: [fix_6] — Update internal reference from 'barcode' to 'scanned_barcode'
         parsed_data = self.parser.parse(scanned_barcode)
         if not parsed_data or not parsed_data.get("sku"):
@@ -136,11 +136,11 @@ class ReceivingService:
         result: str, # 'PASS' or 'FAIL'
         inspector: str,
         notes: Optional[str] = None,
-     ) -> dict:
-         """
+    ) -> dict:
+        """
         Complete IQC inspection. Updates lot status and iqc_result.
         If PASS, suggests a putaway location.
-         """
+        """
         if result not in ("PASS", "FAIL"):
             raise HTTPException(
                 status_code=status.HTTP_400_BAD_REQUEST,
@@ -155,10 +155,10 @@ class ReceivingService:
              )
 
         if lot.iqc_result != "PENDING":
-             raise HTTPException(
-                 status_code=status.HTTP_400_BAD_REQUEST,
-                 detail="Lot is not pending IQC.",
-              )
+            raise HTTPException(
+                status_code=status.HTTP_400_BAD_REQUEST,
+                detail="Lot is not pending IQC.",
+            )
 
         now = datetime.utcnow()
         

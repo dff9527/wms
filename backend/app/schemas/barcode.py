@@ -34,4 +34,3 @@ class LearnResult(BaseModel):
     pattern_id: Optional[int] = None
     saved: bool = False
 
-═══════════════════════════════════════════════════════════════

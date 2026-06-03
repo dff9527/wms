@@ -121,4 +121,3 @@ def list_patterns(db: Session, vendor_id: int | None = None):
         
     return query.order_by(BarcodePattern.priority.desc()).all()
 
-═══════════════════════════════════════════════════════════════
