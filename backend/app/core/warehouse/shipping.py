@@ -23,7 +23,7 @@ class ShippingService:
 
         lines = (
             self.db.query(SOLine)
-            .filter(SOLine.so_number == so_number)
+            .filter(SOLine.so_id == so.so_id)
             .all()
         )
 
@@ -33,41 +33,43 @@ class ShippingService:
             if picked < line.ordered_qty:
                 raise ValueError(f"Line {line.line_number} has insufficient picks ({picked}/{line.ordered_qty})")
 
-        # Update SO status
         so.status = 'SHIPPED'
-        so.shipped_qty = sum(l.ordered_qty for l in lines) # Assuming full shipment
-        
-        # Write SHIP transactions and update lots
+
         details = []
-        
-        # Get pick tasks to know which lots were used
+        # pick tasks for this SO's lines that have been picked
         tasks = (
             self.db.query(PickTask)
-            .filter(
-                PickTask.so_number == so_number,
-                PickTask.status == 'completed'
-            )
+            .join(SOLine, PickTask.so_line_id == SOLine.so_line_id)
+            .filter(SOLine.so_id == so.so_id, PickTask.status == 'PICKED')
             .all()
         )
 
         for task in tasks:
-            lot = self.db.query(InventoryLot).filter(InventoryLot.internal_lot_number == task.internal_lot_number).first()
-            if lot:
-                txn = InventoryTransaction(
-                    internal_lot_number=lot.internal_lot_number,
-                    transaction_type='SHIP',
-                    quantity=task.pick_qty,
-                    reference_so_number=so_number,
-                    performed_by=shipper
-                )
-                self.db.add(txn)
-                
-                details.append({
-                    "internalLotNumber": lot.internal_lot_number,
-                    "qty": task.pick_qty,
-                    "location": lot.location_id
-                })
+            lot = task.lot
+            if not lot:
+                continue
+            # on-hand was already decremented at confirm_pick; this SHIP row records
+            # the dispatch in the ledger without double-decrementing.
+            txn = InventoryTransaction(
+                lot_id=lot.lot_id,
+                transaction_type='SHIP',
+                quantity_change=-task.pick_qty,
+                reference_type='SO',
+                reference_number=so_number,
+                executed_by=shipper,
+            )
+            self.db.add(txn)
+            task.status = 'CONFIRMED'
+            details.append({
+                "internalLotNumber": lot.internal_lot_number,
+                "qty": task.pick_qty,
+                "location": lot.location_id
+            })
 
+        for line in lines:
+            line.shipped_qty = line.picked_qty or 0
+
+        self.db.commit()
         return {
             "status": "success",
             "message": f"Shipment confirmed for {so_number}",
@@ -75,53 +77,47 @@ class ShippingService:
         }
 
     def _get_shipment_details(self, so_number: str) -> List[Dict]:
+        so = self._get_so(self.db, so_number)
+        if not so:
+            return []
         tasks = (
             self.db.query(PickTask)
-            .filter(PickTask.so_number == so_number)
+            .join(SOLine, PickTask.so_line_id == SOLine.so_line_id)
+            .filter(SOLine.so_id == so.so_id)
             .all()
         )
-        
-        lots_map = {}
-        if tasks:
-            lot_numbers = [t.internal_lot_number for t in tasks]
-            lots = self.db.query(InventoryLot).filter(InventoryLot.internal_lot_number.in_(lot_numbers)).all()
-            lots_map = {l.internal_lot_number: l for l in lots}
-            
-        # FIFO order by receive_date
-        sorted_tasks = sorted(tasks, key=lambda t: lots_map.get(t.internal_lot_number).receive_date or datetime.date.min if t.internal_lot_number in lots_map else datetime.date.min)
-        
+
+        def _rkey(t):
+            lot = t.lot
+            return lot.receive_date if lot and lot.receive_date else datetime.datetime.min
+
+        # FIFO order: earliest receive_date first (proof of first-in-first-out)
+        sorted_tasks = sorted(tasks, key=_rkey)
+
         result = []
         for task in sorted_tasks:
-            lot = lots_map.get(task.internal_lot_number)
+            lot = task.lot
             result.append({
-                "internalLotNumber": task.internal_lot_number,
+                "internalLotNumber": lot.internal_lot_number if lot else '',
+                "internalSku": lot.internal_sku if lot else '',
                 "qty": task.pick_qty,
-                "location": task.location_id,
-                "receiveDate": lot.receive_date.isoformat()[:10] if lot and isinstance(lot.receive_date, datetime.datetime) else ''
+                "location": lot.location_id if lot else None,
+                "receiveDate": lot.receive_date.isoformat()[:10] if lot and lot.receive_date else ''
             })
-            
+
         return result
 
     def generate_packing_list(self, so_number: str) -> Dict:
         details = self._get_shipment_details(so_number)
         
-        # Group by SKU
+        # Group by SKU (internalSku already resolved in _get_shipment_details)
         sku_groups: Dict[str, List[Dict]] = {}
         for detail in details:
-            # Need to get SKU from lot
-            lot = self.db.query(InventoryLot).filter(InventoryLot.internal_lot_number == detail['internalLotNumber']).first()
-            sku = lot.internal_sku if lot else 'UNKNOWN'
-            if sku not in sku_groups:
-                sku_groups[sku] = []
-            sku_groups[sku].append(detail)
-            
-        packing_items = []
-        for sku, items in sku_groups.items():
-            packing_items.append({
-                "sku": sku,
-                "lots": items
-            })
-            
+            sku = detail.get("internalSku") or 'UNKNOWN'
+            sku_groups.setdefault(sku, []).append(detail)
+
+        packing_items = [{"sku": sku, "lots": items} for sku, items in sku_groups.items()]
+
         return {
             "soNumber": so_number,
             "items": packing_items

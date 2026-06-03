@@ -7,14 +7,15 @@ from sqlalchemy.orm import Session
 
 from app.core.warehouse.putaway import PutAwayEngine
 from app.models.inventory import InventoryLot, InventoryTransaction   # type: ignore
+from app.models.vendor import VendorItem
 from app.schemas.receiving import ReceiveRequest, ReceiveResponse
-from app.services.barcode_service import BarcodeParser   # type: ignore
+from app.core.barcode.parser import BarcodeParser
 
 
 class ReceivingService:
     def __init__(self, db: Session):
         self.db = db
-        self.parser = BarcodeParser()
+        self.parser = BarcodeParser(db)
         self.putaway_engine = PutAwayEngine(db)
 
     # FIX: [fix_6] — Rename 'barcode' to 'scanned_barcode' and 'qty' to 'quantity' in method signature
@@ -31,19 +32,30 @@ class ReceivingService:
         Atomic receiving flow: Parse → Validate PO → Create Lot → Write Transaction.
         Raises HTTPException 400 on failure.
         """
-        # 1. Parse Barcode
-        # FIX: [fix_6] — Update internal reference from 'barcode' to 'scanned_barcode'
-        parsed_data = self.parser.parse(scanned_barcode)
-        if not parsed_data or not parsed_data.get("sku"):
+        # 1. Parse Barcode (parser returns vendor_pn / qty / lot_code / date_code)
+        parsed_data = self.parser.parse(scanned_barcode, vendor_id)
+        if not parsed_data:
             raise HTTPException(
                 status_code=status.HTTP_400_BAD_REQUEST,
-                detail="Invalid barcode format or missing SKU.",
-             )
+                detail="Invalid or unrecognized barcode for this vendor.",
+            )
 
-        internal_sku = parsed_data["sku"]
-        vendor_pn = parsed_data.get("vendorPn")
-        vendor_lot_code = parsed_data.get("lotCode")
-        date_code = parsed_data.get("dateCode")
+        vendor_pn = parsed_data.get("vendor_pn")
+        vendor_lot_code = parsed_data.get("lot_code")
+        date_code = parsed_data.get("date_code")
+
+        # Resolve internal SKU from the vendor part number via the AVL (vendor_items)
+        mapping = (
+            self.db.query(VendorItem)
+            .filter(VendorItem.vendor_id == vendor_id, VendorItem.vendor_pn == vendor_pn)
+            .first()
+        )
+        if not mapping or not mapping.internal_sku:
+            raise HTTPException(
+                status_code=status.HTTP_400_BAD_REQUEST,
+                detail=f"No AVL mapping for vendor_pn '{vendor_pn}' under vendor {vendor_id}.",
+            )
+        internal_sku = mapping.internal_sku
 
          # 2. Validate against PO (Simplified validation logic per spec)
          # In a real system, this would query the PurchaseOrders table to ensure
@@ -78,6 +90,7 @@ class ReceivingService:
             vendor_id=vendor_id,
             vendor_pn=vendor_pn,
             vendor_lot_code=vendor_lot_code,
+            vendor_date_code=date_code,
             # FIX: [fix_6] — Update internal reference from 'barcode' to 'scanned_barcode'
             original_barcode=scanned_barcode,
             # FIX: [fix_6] — Update internal reference from 'qty' to 'quantity'
@@ -200,3 +213,55 @@ class ReceivingService:
              "status": lot.lot_status,
              "suggestedLocation": suggested_location,
          }
+
+    # ── read helpers used by the receiving API (list / detail / scan) ──────────
+    def scan_barcode(self, barcode: str, vendor_id: int):
+        """Parse a barcode without creating any rows. Returns a ParseResult."""
+        from app.services.barcode_service import parse_barcode
+        result = parse_barcode(self.db, barcode, vendor_id)
+        if result is None:
+            raise ValueError("Invalid or unrecognized barcode for this vendor.")
+        return result
+
+    def _lot_row(self, lot, vendor_name, description, location_code):
+        """Flatten a lot + joined fields into an attribute bag the API serializes.
+        po_number has no column on inventory_lots (only the RECEIVE transaction
+        records it), so it is exposed as None here."""
+        from types import SimpleNamespace
+        return SimpleNamespace(
+            lot_id=lot.lot_id, po_number=None, vendor_name=vendor_name,
+            internal_sku=lot.internal_sku, internal_lot_number=lot.internal_lot_number,
+            internal_barcode=lot.internal_barcode, vendor_pn=lot.vendor_pn,
+            vendor_lot_code=lot.vendor_lot_code, vendor_date_code=lot.vendor_date_code,
+            original_barcode=lot.original_barcode, description=description,
+            quantity_on_hand=lot.quantity_on_hand, unit=lot.unit, lot_status=lot.lot_status,
+            receive_date=lot.receive_date, location_code=location_code,
+            iqc_result=lot.iqc_result, iqc_date=lot.iqc_date,
+            iqc_inspector=lot.iqc_inspector, quality_notes=lot.quality_notes,
+        )
+
+    def _lot_query(self):
+        from app.models.item import Item
+        from app.models.vendor import Vendor
+        from app.models.warehouse import StorageLocation
+        return (
+            self.db.query(InventoryLot, Vendor.vendor_name, Item.description, StorageLocation.location_code)
+            .outerjoin(Vendor, InventoryLot.vendor_id == Vendor.vendor_id)
+            .outerjoin(Item, InventoryLot.internal_sku == Item.internal_sku)
+            .outerjoin(StorageLocation, InventoryLot.location_id == StorageLocation.location_id)
+        )
+
+    def list_pending(self, po_number: Optional[str] = None, status: Optional[str] = None):
+        q = self._lot_query()
+        if status:
+            q = q.filter(InventoryLot.lot_status == status)
+        else:
+            q = q.filter(InventoryLot.iqc_result == "PENDING")
+        return [self._lot_row(lot, vn, desc, loc) for lot, vn, desc, loc in q.all()]
+
+    def get_lot_by_id(self, lot_id: int):
+        row = self._lot_query().filter(InventoryLot.lot_id == lot_id).first()
+        if not row:
+            return None
+        lot, vn, desc, loc = row
+        return self._lot_row(lot, vn, desc, loc)

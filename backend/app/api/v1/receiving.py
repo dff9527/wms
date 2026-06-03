@@ -134,24 +134,16 @@ def receive_item(
     On PO mismatch let service raise and translate to HTTP 400 with detail message.
     """
     service = ReceivingService(db)
-    
+
     try:
-        lot_data = service.process_receipt(
+        # process_receipt already returns a ReceiveResponse (success/lotId/
+        # internalLotNumber/internalBarcode/labelUrl) and raises HTTPException 400
+        # on validation failure.
+        return service.process_receipt(
             po_number=request.poNumber,
             scanned_barcode=request.scannedBarcode or "",
             vendor_id=request.vendorId,
             quantity=request.quantity
-        )
-        
-        # Generate label URL placeholder based on internal barcode
-        label_url = f"/api/v1/labels/{lot_data.internal_barcode}.pdf"
-
-        return ReceiveResponse(
-            success=True,
-            lotId=lot_data.lot_id,
-            internalLotNumber=lot_data.internal_lot_number,
-            internalBarcode=lot_data.internal_barcode,
-            labelUrl=label_url
         )
     except ValueError as e:
         raise HTTPException(status_code=400, detail=str(e))
@@ -168,28 +160,16 @@ def complete_iqc(
     Return {success, status, suggestedLocation?} (suggestedLocation optionally from PutAwayEngine.suggest_location when result==PASS).
     """
     service = ReceivingService(db)
-    
+
     try:
-        updated_lot = service.complete_iqc(
+        # complete_iqc returns {success, status, suggestedLocation} and updates the
+        # lot (status + iqc fields), suggesting a putaway location when result==PASS.
+        return service.complete_iqc(
             lot_id=request.lotId,
             result=request.result,
             inspector=request.inspector,
             notes=request.notes
         )
-        
-        response_data = {
-            "success": True,
-            "status": updated_lot.lot_status,
-        }
-        
-        # If passed QC, suggest a location for put-away
-        if request.result == "PASS":
-            engine = PutAwayEngine(db)
-            suggested_loc = engine.suggest_location(updated_lot)
-            if suggested_loc:
-                response_data["suggestedLocation"] = suggested_loc
-        
-        return response_data
     except ValueError as e:
         raise HTTPException(status_code=400, detail=str(e))
 

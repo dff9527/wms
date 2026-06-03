@@ -70,7 +70,7 @@ def learn_pattern(
             # Determine priority: get max existing priority for this vendor + 1
             max_priority = (
                 db.query(BarcodePattern.priority)
-                .filter(BarcodePattern.vendor_id == vendor.id)
+                .filter(BarcodePattern.vendor_id == vendor.vendor_id)
                 .order_by(BarcodePattern.priority.desc())
                 .limit(1)
                 .scalar_subquery()
@@ -78,7 +78,7 @@ def learn_pattern(
             new_priority = (max_priority or 0) + 1
             
             new_pattern = BarcodePattern(
-                vendor_id=vendor.id,
+                vendor_id=vendor.vendor_id,
                 pattern_name=f"Inferred_{req.vendor_name}_{new_priority}",
                 regex_rule=inference_result["regex_rule"],
                 field_mapping=inference_result.get("field_mapping", {}),

@@ -27,9 +27,9 @@ class PutAwayEngine:
         # Assuming StorageLocation has 'capacity', 'current_quantity' (or similar), and 'zone_type'
         # We need to calculate available capacity.
         
-        locations = self.db.query(StorageLocation).filter(
-            StorageLocation.is_active == True
-        ).all()
+        # storage_locations has no is_active column (schema §4.1); BIN-type locations
+        # are the placeable ones — keep it simple and consider all locations.
+        locations = self.db.query(StorageLocation).all()
 
         if not locations:
             return None
@@ -47,10 +47,11 @@ class PutAwayEngine:
                 InventoryLot.lot_status != "EXPIRED"
             ).scalar() or 0
             
-            free_space = loc.capacity - current_qty
-            
-            if free_space < lot.quantity_on_hand:
-                continue # Cannot fit
+            # schema has capacity_kg / capacity_cbm (both nullable). When capacity is
+            # unspecified, treat the location as having room rather than excluding it.
+            capacity = loc.capacity_kg
+            if capacity is not None and (float(capacity) - current_qty) < lot.quantity_on_hand:
+                continue  # Cannot fit
                 
             # Higher free space relative to capacity is better? 
             # Or just ensure it fits. Let's prioritize filling existing clusters first.

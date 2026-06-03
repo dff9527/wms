@@ -45,12 +45,13 @@ def list_pending(db: Session = Depends(get_db)):
     result = []
     for so in pending_sos:
         from app.models.order import SOLine
-        total_qty = sum(l.ordered_qty for l in db.query(SOLine).filter(SOLine.so_number == so.so_number).all())
-        
+        so_lines = db.query(SOLine).filter(SOLine.so_id == so.so_id).all()
+        total_qty = sum(l.ordered_qty for l in so_lines)
+
         result.append({
              "so_number": so.so_number,
-             "customer_name": so.customer_name,
-             "total_lines": len(db.query(SOLine).filter(SOLine.so_number == so.so_number).all()),
+             "customer_name": str(so.customer_id) if so.customer_id is not None else "",
+             "total_lines": len(so_lines),
              "total_qty": total_qty,
              "status": so.status
          })

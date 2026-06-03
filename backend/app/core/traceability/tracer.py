@@ -27,21 +27,21 @@ class TraceabilityEngine:
         if not lot:
             return None
             
-        # Supplier Info
+        # Supplier Info (via the vendor relationship)
         supplier_info = {
-            "name": getattr(lot, 'supplier_name', 'Unknown'),
+            "name": lot.vendor.vendor_name if lot.vendor else 'Unknown',
             "vendorLotCode": lot.vendor_lot_code,
-            "dateCode": getattr(lot, 'date_code', ''),
-            "receiveDate": lot.receive_date.isoformat()[:10] if isinstance(lot.receive_date, datetime.datetime) else str(lot.receive_date)[:10],
-            "poNumber": getattr(lot, 'po_number', ''),
-            "qty": lot.quantity_on_hand + (lot.quantity_reserved or 0) # Approximation of original qty
+            "dateCode": lot.vendor_date_code or '',
+            "receiveDate": lot.receive_date.isoformat()[:10] if lot.receive_date else '',
+            "poNumber": '',
+            "qty": lot.quantity_on_hand + (lot.quantity_reserved or 0)  # Approximation of original qty
         }
-        
+
         # Receiving Info
         receiving_info = {
-            "date": lot.receive_date.isoformat()[:10] if isinstance(lot.receive_date, datetime.datetime) else str(lot.receive_date)[:10],
-            "inspector": '',
-            "iqcResult": lot.status,
+            "date": lot.receive_date.isoformat()[:10] if lot.receive_date else '',
+            "inspector": lot.iqc_inspector or '',
+            "iqcResult": lot.iqc_result or '',
             "internalSku": lot.internal_sku,
             "internalLotNumber": lot.internal_lot_number,
             "internalBarcode": lot.internal_barcode
@@ -58,29 +58,29 @@ class TraceabilityEngine:
         ship_txns = (
             self.db.query(InventoryTransaction)
             .filter(
-                InventoryTransaction.internal_lot_number == lot.internal_lot_number,
+                InventoryTransaction.lot_id == lot.lot_id,
                 InventoryTransaction.transaction_type.in_(['SHIP', 'PICK'])
             )
             .all()
         )
-        
+
         shipments = []
         seen_sos = set()
         for txn in ship_txns:
-            so_num = txn.reference_so_number
+            so_num = txn.reference_number if txn.reference_type == 'SO' else None
             if so_num and so_num not in seen_sos:
                 seen_sos.add(so_num)
                 so = self.db.query(SalesOrder).filter(SalesOrder.so_number == so_num).first()
-                
+
                 # Calculate qty shipped from this lot to this SO
-                total_qty = sum(t.quantity for t in ship_txns if t.reference_so_number == so_num)
-                
+                total_qty = sum(abs(t.quantity_change) for t in ship_txns if t.reference_number == so_num)
+
                 shipments.append({
                     "soNumber": so_num,
-                    "customer": so.customer_name if so else '',
-                    "shipDate": so.ship_date.isoformat()[:10] if so and isinstance(so.ship_date, datetime.datetime) else str(so.ship_date)[:10] if so else '',
+                    "customer": so.customer_id if so else '',
+                    "shipDate": '',
                     "qty": total_qty,
-                    "status": so.status.lower() if so else 'unknown'
+                    "status": so.status.lower() if so and so.status else 'unknown'
                 })
                 
         return {
@@ -106,6 +106,7 @@ class TraceabilityEngine:
             "internalBarcode": lot.internal_barcode,
             "internalLotNumber": lot.internal_lot_number,
             "vendorLotCode": lot.vendor_lot_code,
-            "supplierName": getattr(lot, 'supplier_name', ''),
-            "poNumber": getattr(lot, 'po_number', '')
+            "vendorDateCode": lot.vendor_date_code or '',
+            "supplierName": lot.vendor.vendor_name if lot.vendor else '',
+            "originalBarcode": lot.original_barcode or ''
         }
