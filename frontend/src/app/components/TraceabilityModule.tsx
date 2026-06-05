@@ -11,8 +11,12 @@ export default function TraceabilityModule() {
 
   const handleSearch = async () => {
     if (!searchBarcode.trim()) return;
+    
+    // Reset stale state before new search
+    setTraceResult(null);
     setLoading(true);
     setError(null);
+    
     try {
       // Try forward trace first
       try {
@@ -27,21 +31,23 @@ export default function TraceabilityModule() {
           throw forwardErr;
         }
       }
+      
       // Fallback: backward trace
       try {
         const backResponse = await axios.get('/api/v1/trace/backward', { params: { internal_barcode: searchBarcode } });
         if (backResponse.data) {
           const b = backResponse.data;
           // Construct a partial TraceForwardResult from backward data
+          // Backward endpoint returns exactly: { internalBarcode, internalLotNumber, vendorLotCode, vendorDateCode, supplierName, originalBarcode }
           const partial: TraceForwardResult = {
             barcode: b.internalBarcode || searchBarcode,
             type: 'internal_barcode',
             supplier: {
               name: b.supplierName || '',
               vendorLotCode: b.vendorLotCode || '',
-              dateCode: '',
+              dateCode: b.vendorDateCode || '',
               receiveDate: '',
-              poNumber: b.poNumber || '',
+              poNumber: '',
               qty: 0
             },
             receiving: {
@@ -69,6 +75,7 @@ export default function TraceabilityModule() {
           throw backErr;
         }
       }
+      
       // Neither found
       setError('找不到對應的批次或條碼');
     } catch (err: any) {
@@ -78,28 +85,8 @@ export default function TraceabilityModule() {
     }
   };
 
-  const runExample = async (val: string) => {
+  const runExample = (val: string) => {
     setSearchBarcode(val);
-    // Trigger search with the value directly since setState is async
-    setLoading(true);
-    setError(null);
-    try {
-      const response = await axios.get('/api/v1/trace/forward', { params: { query: val } });
-      if (response.data) { mapAndSetResult(response.data); return; }
-    } catch (e: any) {
-      if (e.response?.status !== 404) { setError(e.response?.data?.detail || 'Search failed'); setLoading(false); return; }
-    }
-    try {
-      const backResponse = await axios.get('/api/v1/trace/backward', { params: { internal_barcode: val } });
-      if (backResponse.data) {
-        const b = backResponse.data;
-        setTraceResult({ barcode: b.internalBarcode || val, type: 'internal_barcode', supplier: { name: b.supplierName || '', vendorLotCode: b.vendorLotCode || '', dateCode: '', receiveDate: '', poNumber: b.poNumber || '', qty: 0 }, receiving: { date: '', inspector: '', iqcResult: '', internalSku: '', internalLotNumber: b.internalLotNumber || '', internalBarcode: b.internalBarcode || '' }, inventory: { location: '', currentQty: 0, reservedQty: 0 }, shipments: [] });
-        setError('部分追溯 — 僅找到逆向批次資料，正向追溯鏈不可用');
-        setLoading(false); return;
-      }
-    } catch { /* ignore */ }
-    setError('找不到對應的批次或條碼');
-    setLoading(false);
   };
 
   const mapAndSetResult = (data: any) => {
@@ -107,32 +94,32 @@ export default function TraceabilityModule() {
       barcode: data.barcode,
       type: data.type,
       supplier: {
-        name: data.supplier.name,
-        vendorLotCode: data.supplier.vendorLotCode,
-        dateCode: data.supplier.dateCode,
-        receiveDate: data.supplier.receiveDate,
-        poNumber: data.supplier.poNumber,
-        qty: data.supplier.qty
+        name: (data.supplier ?? {}).name || '',
+        vendorLotCode: (data.supplier ?? {}).vendorLotCode || '',
+        dateCode: (data.supplier ?? {}).dateCode || '',
+        receiveDate: (data.supplier ?? {}).receiveDate || '',
+        poNumber: (data.supplier ?? {}).poNumber || '',
+        qty: (data.supplier ?? {}).qty ?? 0
       },
       receiving: {
-        date: data.receiving.date,
-        inspector: data.receiving.inspector,
-        iqcResult: data.receiving.iqcResult,
-        internalSku: data.receiving.internalSku,
-        internalLotNumber: data.receiving.internalLotNumber,
-        internalBarcode: data.receiving.internalBarcode
+        date: (data.receiving ?? {}).date || '',
+        inspector: (data.receiving ?? {}).inspector || '',
+        iqcResult: (data.receiving ?? {}).iqcResult || '',
+        internalSku: (data.receiving ?? {}).internalSku || '',
+        internalLotNumber: (data.receiving ?? {}).internalLotNumber || '',
+        internalBarcode: (data.receiving ?? {}).internalBarcode || ''
       },
       inventory: {
-        location: data.inventory.location,
-        currentQty: data.inventory.currentQty,
-        reservedQty: data.inventory.reservedQty
+        location: (data.inventory ?? {}).location || '',
+        currentQty: (data.inventory ?? {}).currentQty ?? 0,
+        reservedQty: (data.inventory ?? {}).reservedQty ?? 0
       },
-      shipments: data.shipments.map((s: any) => ({
-        soNumber: s.soNumber,
-        customer: s.customer,
-        shipDate: s.shipDate,
-        qty: s.qty,
-        status: s.status
+      shipments: (Array.isArray(data.shipments) ? data.shipments : []).map((s: any) => ({
+        soNumber: s.soNumber || '',
+        customer: s.customer || '',
+        shipDate: s.shipDate || '',
+        qty: s.qty ?? 0,
+        status: s.status || ''
       }))
     });
   };
@@ -147,7 +134,7 @@ export default function TraceabilityModule() {
       details: [
         { label: '供應商', value: traceResult?.supplier.name || '' },
         { label: '供應商批號 (vendor_lot_code)', value: traceResult?.supplier.vendorLotCode || '' },
-        { label: '出貨數量', value: `${traceResult?.supplier.qty.toLocaleString() || 0} PCS` },
+        { label: '出貨數量', value: `${traceResult?.supplier.qty?.toLocaleString() || 0} PCS` },
       ],
     },
     {
@@ -170,17 +157,18 @@ export default function TraceabilityModule() {
   // Add shipment steps dynamically if traceResult exists
   if (traceResult) {
     traceResult.shipments.forEach((shipment, idx) => {
+      const st = String(shipment.status ?? '').toUpperCase();
       traceTimeline.push({
         step: 3 + idx,
         title: `揀貨出庫 #${idx + 1}`,
         date: shipment.shipDate,
-        icon: shipment.status === 'delivered' ? TruckIcon : Building2,
-        color: shipment.status === 'delivered' ? 'bg-green-500' : 'bg-yellow-500',
+        icon: st === 'DELIVERED' ? TruckIcon : Building2,
+        color: st === 'DELIVERED' ? 'bg-green-500' : 'bg-yellow-500',
         details: [
           { label: 'SO 單號', value: shipment.soNumber },
           { label: '客戶', value: shipment.customer },
           { label: '出貨數量', value: `${shipment.qty.toLocaleString()} PCS` },
-          ...(shipment.status !== 'delivered' ? [{ label: '狀態', value: '待出貨' }] : [])
+          ...(st !== 'DELIVERED' ? [{ label: '狀態', value: '待出貨' }] : [])
         ],
       });
     });
@@ -357,23 +345,26 @@ export default function TraceabilityModule() {
                   </tr>
                 </thead>
                 <tbody>
-                  {traceResult.shipments.map((shipment, idx) => (
-                    <tr key={idx} className="border-b border-slate-100 hover:bg-slate-50">
-                      <td className="py-3 px-4 text-sm font-mono text-slate-900">{shipment.soNumber}</td>
-                      <td className="py-3 px-4 text-sm text-slate-700">{shipment.customer}</td>
-                      <td className="py-3 px-4 text-sm text-slate-700">{shipment.shipDate}</td>
-                      <td className="py-3 px-4 text-sm text-right font-medium text-slate-900">{shipment.qty.toLocaleString()} PCS</td>
-                      <td className="py-3 px-4 text-center">
-                        <span
-                          className={`px-2 py-1 rounded text-xs font-medium ${
-                            shipment.status === 'delivered' ? 'bg-green-100 text-green-700' : 'bg-yellow-100 text-yellow-700'
-                          }`}
-                        >
-                          {shipment.status === 'delivered' ? '已送達' : '待出貨'}
-                        </span>
-                      </td>
-                    </tr>
-                  ))}
+                  {traceResult.shipments.map((shipment, idx) => {
+                    const st = String(shipment.status ?? '').toUpperCase();
+                    return (
+                      <tr key={idx} className="border-b border-slate-100 hover:bg-slate-50">
+                        <td className="py-3 px-4 text-sm font-mono text-slate-900">{shipment.soNumber}</td>
+                        <td className="py-3 px-4 text-sm text-slate-700">{shipment.customer}</td>
+                        <td className="py-3 px-4 text-sm text-slate-700">{shipment.shipDate}</td>
+                        <td className="py-3 px-4 text-sm text-right font-medium text-slate-900">{shipment.qty.toLocaleString()} PCS</td>
+                        <td className="py-3 px-4 text-center">
+                          <span
+                            className={`px-2 py-1 rounded text-xs font-medium ${
+                              st === 'DELIVERED' ? 'bg-green-100 text-green-700' : 'bg-yellow-100 text-yellow-700'
+                            }`}
+                          >
+                            {st === 'DELIVERED' ? '已送達' : '待出貨'}
+                          </span>
+                        </td>
+                      </tr>
+                    );
+                  })}
                 </tbody>
               </table>
             </div>
