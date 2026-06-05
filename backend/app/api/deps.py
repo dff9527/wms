@@ -1,7 +1,6 @@
 from typing import Generator
 
 from fastapi import Depends, HTTPException, status
-# FIX: [fix_4] — Remove unused HTTPBearer from imports; keep only OAuth2PasswordBearer
 from fastapi.security import OAuth2PasswordBearer
 from sqlalchemy.orm import Session
 
@@ -23,7 +22,6 @@ def get_current_user(
     Returns dict {username, role} to maintain compatibility with existing callers.
     Raises 401 if credentials are invalid or user is inactive.
     """
-    # FIX: [fix_1] — Normalize indentation to consistent 4-space levels throughout function body
     credentials_exception = HTTPException(
         status_code=status.HTTP_401_UNAUTHORIZED,
         detail="Could not validate credentials",
@@ -56,13 +54,12 @@ def require_role(*roles: str):
     """Factory dependency to enforce specific roles.
 
     Args:
-         *roles: Allowed roles (e.g., 'admin', 'operator').
+          *roles: Allowed roles (e.g., 'admin', 'operator').
 
     Returns:
         A dependency that checks the current user's role against allowed roles.
         Raises 403 if insufficient permissions.
     """
-    # FIX: [fix_1] — Normalize indentation to consistent 4-space levels; nested function at 8 spaces
     def _check_role(current_user: dict = Depends(get_current_user)):
         if current_user["role"] not in roles:
             raise HTTPException(

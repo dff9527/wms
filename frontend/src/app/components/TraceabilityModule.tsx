@@ -11,6 +11,15 @@ export default function TraceabilityModule() {
 
   const handleSearch = async () => {
     if (!searchBarcode.trim()) return;
+    const trimmed = searchBarcode.trim();
+    if (trimmed.length > 128) {
+      setError('查詢字串過長（最多 128 字元）');
+      return;
+    }
+    if (!/^[A-Za-z0-9\-_.]+$/.test(trimmed)) {
+      setError('查詢字串包含不允許的字元');
+      return;
+    }
     
     // Reset stale state before new search
     setTraceResult(null);

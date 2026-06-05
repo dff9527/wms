@@ -63,9 +63,10 @@ export interface FifoAllocationDetail extends WmsLotIdentifiers {
   location: string;
 }
 
+// FIX: [fix_2] — Make internalSku optional in FifoAllocationSummary to match actual data shape returned by allocation handler
 export interface FifoAllocationSummary {
   soNumber: string;
-  internalSku: string;
+  internalSku?: string;
   requestedQty: number;
   strategy: string;
   allocatedQty: number;
