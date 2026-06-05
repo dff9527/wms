@@ -1,0 +1,6 @@
+FINAL_AUDIT: PASS (stacks: python, typescript)
+
+WARNINGS (3):
+  [env] app.main — missing dep 'fastapi' (install, not a code bug)
+  [drift] get_db imported from: app.api.deps, app.database, app.db, app.db.session, app.dependencies
+  [drift] settings imported from: app.config.settings, app.core.config

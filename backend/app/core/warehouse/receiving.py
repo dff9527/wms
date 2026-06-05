@@ -6,8 +6,9 @@ from fastapi import HTTPException, status
 from sqlalchemy.orm import Session
 
 from app.core.warehouse.putaway import PutAwayEngine
-from app.models.inventory import InventoryLot, InventoryTransaction   # type: ignore
+from app.models.inventory import InventoryLot, InventoryTransaction    # type: ignore
 from app.models.vendor import VendorItem
+from app.models.storage import StorageLocation
 from app.schemas.receiving import ReceiveRequest, ReceiveResponse
 from app.core.barcode.parser import BarcodeParser
 
@@ -18,7 +19,6 @@ class ReceivingService:
         self.parser = BarcodeParser(db)
         self.putaway_engine = PutAwayEngine(db)
 
-    # FIX: [fix_6] — Rename 'barcode' to 'scanned_barcode' and 'qty' to 'quantity' in method signature
     def process_receipt(
         self,
         po_number: str,
@@ -57,32 +57,25 @@ class ReceivingService:
             )
         internal_sku = mapping.internal_sku
 
-         # 2. Validate against PO (Simplified validation logic per spec)
-         # In a real system, this would query the PurchaseOrders table to ensure
-         # the PO exists, is open, and contains this SKU/Vendor.
+        # 2. Validate against PO (simplified per spec; full PO validation is Stage A2)
         if not po_number or not vendor_id:
             raise HTTPException(
                 status_code=status.HTTP_400_BAD_REQUEST,
                 detail="PO Number and Vendor ID are required for receipt validation.",
-             )
-        
-         # Mock PO Validation Check - Replace with actual DB lookup in production
-         # if not self._validate_po_line(po_number, vendor_id, internal_sku):
-         #     raise HTTPException(...)
-        
-         # 3. Generate Unique Identifiers
+            )
+
+        # 3. Generate Unique Identifiers
         internal_barcode = f"INT-{uuid.uuid4().hex[:12].upper()}"
         internal_lot_number = f"LOT-{datetime.now().strftime('%Y%m%d%H%M%S')}-{uuid.uuid4().hex[:6].upper()}"
 
-         # Ensure uniqueness (retry loop omitted for brevity, assuming low collision rate)
         existing = self.db.query(InventoryLot).filter(
             InventoryLot.internal_barcode == internal_barcode
-         ).first()
+        ).first()
         if existing:
-              # Collision retry logic would go here
-             pass 
+            # Collision retry logic would go here
+            pass
 
-         # 4. Create Inventory Lot
+        # 4. Create Inventory Lot
         new_lot = InventoryLot(
             internal_sku=internal_sku,
             internal_barcode=internal_barcode,
@@ -91,30 +84,26 @@ class ReceivingService:
             vendor_pn=vendor_pn,
             vendor_lot_code=vendor_lot_code,
             vendor_date_code=date_code,
-            # FIX: [fix_6] — Update internal reference from 'barcode' to 'scanned_barcode'
             original_barcode=scanned_barcode,
-            # FIX: [fix_6] — Update internal reference from 'qty' to 'quantity'
             quantity_on_hand=quantity,
             quantity_reserved=0,
-            unit="PCS", # Default unit, should ideally come from SKU definition
-            lot_status="QC_HOLD", # New receipts go to QC Hold by default
+            unit="PCS",
+            lot_status="QC_HOLD",
             iqc_result="PENDING",
             raw_scan_data=parsed_data,
             created_at=datetime.utcnow(),
             updated_at=datetime.utcnow(),
-         )
-        
-        self.db.add(new_lot)
-        self.db.flush() # Get ID before commit
+        )
 
-         # 5. Write RECEIVE Transaction
+        self.db.add(new_lot)
+        self.db.flush()   # Get ID before commit
+
+        # 5. Write RECEIVE Transaction
         transaction = InventoryTransaction(
             transaction_type="RECEIVE",
             lot_id=new_lot.lot_id,
-            # FIX: [fix_6] — Update internal reference from 'qty' to 'quantity'
             quantity_change=quantity,
             quantity_before=0,
-            # FIX: [fix_6] — Update internal reference from 'qty' to 'quantity'
             quantity_after=quantity,
             reference_type="PO",
             reference_number=po_number,
@@ -122,9 +111,9 @@ class ReceivingService:
             device_id=device_id,
             notes=f"Received via PO {po_number}",
             created_at=datetime.utcnow(),
-         )
+        )
         self.db.add(transaction)
-        
+
         try:
             self.db.commit()
             self.db.refresh(new_lot)
@@ -133,7 +122,7 @@ class ReceivingService:
             raise HTTPException(
                 status_code=status.HTTP_400_BAD_REQUEST,
                 detail=f"Failed to process receipt: {str(e)}",
-             )
+            )
 
         return ReceiveResponse(
             success=True,
@@ -141,31 +130,42 @@ class ReceivingService:
             internalLotNumber=new_lot.internal_lot_number,
             internalBarcode=new_lot.internal_barcode,
             labelUrl=f"/api/v1/labels/{new_lot.internal_barcode}",
-         )
+        )
 
     def complete_iqc(
         self,
         lot_id: int,
-        result: str, # 'PASS' or 'FAIL'
+        result: str,   # 'PASS' or 'FAIL'
         inspector: str,
         notes: Optional[str] = None,
     ) -> dict:
         """
         Complete IQC inspection. Updates lot status and iqc_result.
-        If PASS, suggests a putaway location.
+        If PASS, assigns a putaway location and records a PUT_AWAY transaction.
+
+        NOTE: The caller (route layer) is responsible for passing the authenticated
+        principal as `inspector`. Do not accept this value from user input directly.
         """
         if result not in ("PASS", "FAIL"):
             raise HTTPException(
                 status_code=status.HTTP_400_BAD_REQUEST,
                 detail="IQC result must be PASS or FAIL.",
-             )
+            )
+
+        # inspector must be derived from the authenticated session at the route layer, not from user input
+        inspector = inspector.strip()
+        if len(inspector) > 100 or not inspector.isprintable():
+            raise HTTPException(
+                status_code=status.HTTP_400_BAD_REQUEST,
+                detail="inspector must be 100 characters or fewer and contain only printable characters",
+            )
 
         lot = self.db.query(InventoryLot).filter(InventoryLot.lot_id == lot_id).first()
         if not lot:
             raise HTTPException(
                 status_code=status.HTTP_404_NOT_FOUND,
                 detail="Lot not found.",
-             )
+            )
 
         if lot.iqc_result != "PENDING":
             raise HTTPException(
@@ -174,29 +174,40 @@ class ReceivingService:
             )
 
         now = datetime.utcnow()
-        
-         # Update Lot Status based on Result
+
+        # Update lot status based on result
+        suggested_location_code = None
         if result == "PASS":
             lot.lot_status = "AVAILABLE"
-            suggested_location = self.putaway_engine.suggest_location(lot)
+
+            # A1: persist the suggested putaway location onto the lot
+            suggested_id = self.putaway_engine.suggest_location_id(lot)
+            if suggested_id is not None:
+                lot.location_id = suggested_id
+                put_away_transaction = InventoryTransaction(
+                    transaction_type="PUT_AWAY",
+                    lot_id=lot.lot_id,
+                    quantity_change=0,
+                    to_location_id=suggested_id,
+                    reference_type="IQC",
+                    reference_number=str(lot.lot_id),
+                    executed_by=inspector,
+                    created_at=now,
+                )
+                self.db.add(put_away_transaction)
+
+                loc_row = self.db.query(StorageLocation).filter(
+                    StorageLocation.location_id == suggested_id
+                ).first()
+                suggested_location_code = loc_row.location_code if loc_row else None
         else:
             lot.lot_status = "QUARANTINE"
-            suggested_location = None
 
         lot.iqc_result = result
         lot.iqc_date = now
         lot.iqc_inspector = inspector
         lot.quality_notes = notes
         lot.updated_at = now
-
-         # Write Transaction for IQC Completion (Optional but good practice for audit trail)
-         # Usually IQC doesn't change quantity, just status. 
-         # We can write a STATUS_CHANGE transaction type if supported, or skip if only qty changes are tracked.
-         # Per spec 7.1, we don't strictly need a transaction row for status-only changes unless specified.
-         # However, to be safe and consistent with "Every inventory mutation... writes a corresponding InventoryTransaction",
-         # let's check if we have a STATUS_CHANGE type. The schema says: 
-         # CHECK (transaction_type IN ('RECEIVE', 'PUT_AWAY', 'PICK', 'SHIP', 'ADJUST', 'SPLIT', 'MERGE', 'RETURN', 'SCRAP'))
-         # No STATUS_CHANGE. So we do NOT write a transaction here, just update the lot.
 
         try:
             self.db.commit()
@@ -206,13 +217,13 @@ class ReceivingService:
             raise HTTPException(
                 status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
                 detail=f"Failed to complete IQC: {str(e)}",
-             )
+            )
 
         return {
-             "success": True,
-             "status": lot.lot_status,
-             "suggestedLocation": suggested_location,
-         }
+            "success": True,
+            "status": lot.lot_status,
+            "suggestedLocation": suggested_location_code,
+        }
 
     # ── read helpers used by the receiving API (list / detail / scan) ──────────
     def scan_barcode(self, barcode: str, vendor_id: int):
