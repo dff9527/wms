@@ -28,7 +28,7 @@ from app.main import app
 from app.db.session import SessionLocal
 from app.models.item import Item
 from app.models.vendor import Vendor, VendorItem
-from app.models.order import SalesOrder, SOLine, PickTask
+from app.models.order import SalesOrder, SOLine, PickTask, PurchaseOrder, POLine
 from app.models.inventory import InventoryLot, InventoryTransaction
 
 client = TestClient(app)
@@ -70,6 +70,10 @@ def cleanup_test_data():
         if so_ids:
             db.query(SOLine).filter(SOLine.so_id.in_(so_ids)).delete(synchronize_session=False)
             db.query(SalesOrder).filter(SalesOrder.so_id.in_(so_ids)).delete(synchronize_session=False)
+        po_ids = [r[0] for r in db.query(PurchaseOrder.po_id).filter(PurchaseOrder.po_number.like("PO-E2E-%")).all()]
+        if po_ids:
+            db.query(POLine).filter(POLine.po_id.in_(po_ids)).delete(synchronize_session=False)
+            db.query(PurchaseOrder).filter(PurchaseOrder.po_id.in_(po_ids)).delete(synchronize_session=False)
         db.commit()
     finally:
         db.close()
@@ -92,14 +96,25 @@ def seed_master_data():
                               internal_sku=SKU, approval_status="APPROVED"))
         db.commit()
 
-        so_number = f"SO-E2E-{datetime.now().strftime('%Y%m%d%H%M%S')}"
+        ts = datetime.now().strftime('%Y%m%d%H%M%S')
+
+        # purchase order for A2 PO validation (ordered_qty large enough for the receipt)
+        po_number = f"PO-E2E-{ts}"
+        po = PurchaseOrder(po_number=po_number, vendor_id=vendor.vendor_id,
+                           po_date=date.today(), status="OPEN")
+        db.add(po)
+        db.flush()
+        db.add(POLine(po_id=po.po_id, line_number=1, internal_sku=SKU,
+                      vendor_pn=VENDOR_PN, ordered_qty=100000, received_qty=0))
+
+        so_number = f"SO-E2E-{ts}"
         so = SalesOrder(so_number=so_number, order_date=date.today(),
                         status="OPEN", lot_selection_rule="FIFO")
         db.add(so)
         db.flush()
         db.add(SOLine(so_id=so.so_id, line_number=1, internal_sku=SKU, ordered_qty=1000))
         db.commit()
-        return vendor.vendor_id, so_number
+        return vendor.vendor_id, so_number, po_number
     finally:
         db.close()
 
@@ -107,12 +122,12 @@ def seed_master_data():
 def main():
     print("WMS end-to-end flow")
     cleanup_test_data()
-    vendor_id, so_number = seed_master_data()
-    print(f"  seeded item={SKU}, vendor_id={vendor_id}, so={so_number}")
+    vendor_id, so_number, po_number = seed_master_data()
+    print(f"  seeded item={SKU}, vendor_id={vendor_id}, so={so_number}, po={po_number}")
 
     # 1. Receive (scan + create lot)
     r = client.post("/api/v1/receiving/receive", json={
-        "po_number": "PO-E2E-1", "barcode": TI_BARCODE, "vendor_id": vendor_id, "qty": 3000,
+        "po_number": po_number, "barcode": TI_BARCODE, "vendor_id": vendor_id, "qty": 3000,
     })
     ok = check("POST /receiving/receive 200", r.status_code == 200, r.text[:200])
     if not ok:

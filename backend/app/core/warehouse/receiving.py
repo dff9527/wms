@@ -1,4 +1,5 @@
 import uuid
+import logging
 from datetime import datetime
 from typing import Optional
 
@@ -6,11 +7,14 @@ from fastapi import HTTPException, status
 from sqlalchemy.orm import Session
 
 from app.core.warehouse.putaway import PutAwayEngine
-from app.models.inventory import InventoryLot, InventoryTransaction    # type: ignore
+from app.models.inventory import InventoryLot, InventoryTransaction      # type: ignore
+from app.models.order import PurchaseOrder, POLine
 from app.models.vendor import VendorItem
 from app.models.storage import StorageLocation
 from app.schemas.receiving import ReceiveRequest, ReceiveResponse
 from app.core.barcode.parser import BarcodeParser
+
+logger = logging.getLogger(__name__)
 
 
 class ReceivingService:
@@ -32,6 +36,13 @@ class ReceivingService:
         Atomic receiving flow: Parse → Validate PO → Create Lot → Write Transaction.
         Raises HTTPException 400 on failure.
         """
+        # FIX: fix_2 — guard that quantity is positive before any mutation
+        if quantity < 1:
+            raise HTTPException(
+                status_code=status.HTTP_400_BAD_REQUEST,
+                detail="Quantity must be a positive integer.",
+            )
+
         # 1. Parse Barcode (parser returns vendor_pn / qty / lot_code / date_code)
         parsed_data = self.parser.parse(scanned_barcode, vendor_id)
         if not parsed_data:
@@ -57,11 +68,44 @@ class ReceivingService:
             )
         internal_sku = mapping.internal_sku
 
-        # 2. Validate against PO (simplified per spec; full PO validation is Stage A2)
+        # 2. Validate against PO
         if not po_number or not vendor_id:
             raise HTTPException(
                 status_code=status.HTTP_400_BAD_REQUEST,
                 detail="PO Number and Vendor ID are required for receipt validation.",
+            )
+
+        # FIX: fix_3 — add SELECT FOR UPDATE lock to prevent concurrent receipt race conditions
+        po = self.db.query(PurchaseOrder).filter(PurchaseOrder.po_number == po_number).with_for_update().first()
+        if po is None:
+            raise HTTPException(
+                status_code=status.HTTP_400_BAD_REQUEST,
+                detail=f'採購單不存在: {po_number}',
+            )
+        if po.status in ('CLOSED', 'CANCELLED'):
+            raise HTTPException(
+                status_code=status.HTTP_400_BAD_REQUEST,
+                detail=f'採購單狀態不可收貨: {po.status}',
+            )
+
+        # Find matching po_line
+        line_query = (
+            self.db.query(POLine)
+            .filter(
+                POLine.po_id == po.po_id,
+                POLine.internal_sku == internal_sku,
+                POLine.received_qty < POLine.ordered_qty,
+            )
+        )
+        # If vendor_pn is present/non-empty, also require match on vendor_pn
+        if vendor_pn:
+            line_query = line_query.filter(POLine.vendor_pn == vendor_pn)
+
+        matched_line = line_query.first()
+        if not matched_line:
+            raise HTTPException(
+                status_code=status.HTTP_400_BAD_REQUEST,
+                detail=f'找不到符合的採購單明細 (sku={internal_sku}, po={po_number})',
             )
 
         # 3. Generate Unique Identifiers
@@ -96,7 +140,7 @@ class ReceivingService:
         )
 
         self.db.add(new_lot)
-        self.db.flush()   # Get ID before commit
+        self.db.flush()     # Get ID before commit
 
         # 5. Write RECEIVE Transaction
         transaction = InventoryTransaction(
@@ -114,14 +158,36 @@ class ReceivingService:
         )
         self.db.add(transaction)
 
+        # Increment matched_line.received_qty by the receipt quantity
+        new_received_qty = matched_line.received_qty + quantity
+        if new_received_qty > matched_line.ordered_qty:
+            raise HTTPException(
+                status_code=status.HTTP_400_BAD_REQUEST,
+                detail='收貨數量超過採購單剩餘數量',
+            )
+        matched_line.received_qty = new_received_qty
+
+        # Re-evaluate PO status before commit
+        all_lines = (
+            self.db.query(POLine)
+            .filter(POLine.po_id == po.po_id)
+            .all()
+        )
+        if all(line.received_qty >= line.ordered_qty for line in all_lines):
+            po.status = 'CLOSED'
+        else:
+            po.status = 'PARTIAL'
+
         try:
             self.db.commit()
             self.db.refresh(new_lot)
         except Exception as e:
+            # FIX: fix_4 — log exception server-side and return generic message to client
+            logger.exception('process_receipt failed')
             self.db.rollback()
             raise HTTPException(
                 status_code=status.HTTP_400_BAD_REQUEST,
-                detail=f"Failed to process receipt: {str(e)}",
+                detail="Failed to process receipt. Please try again.",
             )
 
         return ReceiveResponse(
@@ -135,7 +201,7 @@ class ReceivingService:
     def complete_iqc(
         self,
         lot_id: int,
-        result: str,   # 'PASS' or 'FAIL'
+        result: str,     # 'PASS' or 'FAIL'
         inspector: str,
         notes: Optional[str] = None,
     ) -> dict:
