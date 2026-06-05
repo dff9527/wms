@@ -1,7 +1,7 @@
 from fastapi import FastAPI
 from fastapi.middleware.cors import CORSMiddleware
 
-import app.models   # noqa: F401  確保所有 ORM model 載入、Base.metadata 完整
+import app.models    # noqa: F401  確保所有 ORM model 載入、Base.metadata 完整
 from app.api.v1 import receiving as receiving_v1
 from app.api.v1 import inventory as inventory_v1
 from app.api.v1 import picking as picking_v1
@@ -33,5 +33,5 @@ def health():
 
 @app.get("/api/v1/ping")
 def ping():
-     """Minimal API prefix route for frontend connectivity checks."""
+    """Minimal API prefix route for frontend connectivity checks."""
     return {"message": "pong"}
