@@ -35,8 +35,8 @@ def get_lot_detail(lot_id: int, db: Session = Depends(get_db)):
 @router.post("/adjust")
 def adjust_inventory(request: AdjustRequest, db: Session = Depends(get_db)):
     service = InventoryService(db)
-     # Convert Pydantic model to dict for service layer compatibility
-    req_dict = request.model_dump(by_alias=True)
+    # dump by FIELD name (lotId/quantityChange/...) to match what the service reads
+    req_dict = request.model_dump()
     result = service.adjust_quantity(req_dict, executed_by=request.executedBy)
     return result
 
@@ -44,6 +44,6 @@ def adjust_inventory(request: AdjustRequest, db: Session = Depends(get_db)):
 @router.post("/split")
 def split_lot_endpoint(request: SplitRequest, db: Session = Depends(get_db)):
     service = InventoryService(db)
-    req_dict = request.model_dump(by_alias=True)
+    req_dict = request.model_dump()
     result = service.split_lot(req_dict, executed_by=request.executedBy)
     return result
