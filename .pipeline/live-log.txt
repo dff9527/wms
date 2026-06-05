@@ -1,6 +1,0 @@
-
-⚠ Found existing checkpoint for pipeline 'b-web'
-  Last completed: debug_plan at 2026-06-05T03:59:52Z
-  Use --resume to continue, or --fresh to start over
-
-Resume from checkpoint? [Y/n] 

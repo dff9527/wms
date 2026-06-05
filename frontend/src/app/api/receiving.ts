@@ -5,9 +5,14 @@ const API_BASE_URL = import.meta.env.VITE_API_URL || 'http://localhost:8000';
 
 function normalizeStatus(s: string): ReceivingItem['lotStatus'] {
   const upper = String(s || '').toUpperCase();
-  if (upper === 'PENDING_RECEIVE' || upper === 'PENDING') return 'PENDING_RECEIVE';
+  if (upper === 'AVAILABLE') return 'AVAILABLE';
+  if (upper === 'RESERVED') return 'RESERVED';
   if (upper === 'QC_HOLD' || upper === 'IQC') return 'QC_HOLD';
   if (upper === 'QUARANTINE') return 'QUARANTINE';
+  if (upper === 'EXPIRED') return 'EXPIRED';
+  if (upper === 'SHIPPED') return 'SHIPPED';
+  // Optional alias for legacy fallback data
+  if (upper === 'PENDING_RECEIVE' || upper === 'PENDING') return 'QC_HOLD';
   return 'AVAILABLE';
 }
 
@@ -29,11 +34,11 @@ export function mapRawToReceivingItem(raw: ReceivingItemApiRaw): ReceivingItem {
     lotStatus: normalizeStatus(raw.lot_status),
     receiveDate: raw.receive_date ?? '',
     locationCode: raw.location_code ?? undefined,
-    iqcResult: raw.iqc_result as ReceivingItem['iqcResult'] | undefined,
+    iqcResult: raw.iqc_result ? String(raw.iqc_result).toUpperCase() as ReceivingItem['iqcResult'] : undefined,
     iqcDate: raw.iqc_date ?? undefined,
     iqcInspector: raw.iqc_inspector ?? undefined,
     qualityNotes: raw.quality_notes ?? undefined,
-  };
+   };
 }
 
 export interface ScanBarcodeRequest {
@@ -48,14 +53,15 @@ export interface ScanBarcodeResponse {
     qty: number;
     lotCode: string;
     dateCode?: string;
-  };
+   };
   patternUsed?: string;
 }
 
 export interface ProcessReceiptRequest {
   poNumber: string;
-  scannedBarcode: string;
-  quantity: number;
+  barcode: string;
+  vendorId: number;
+  qty: number;
 }
 
 export interface ProcessReceiptResponse {
@@ -85,13 +91,13 @@ export async function getReceivingList(params?: {
       status: params?.status,
       page: params?.page,
       page_size: params?.pageSize,
-    },
-  });
+     },
+   });
   const { items, total } = response.data;
   return {
     items: items.map(mapRawToReceivingItem),
     total: total ?? items.length,
-  };
+   };
 }
 
 export async function getReceivingDetail(lotId: number): Promise<ReceivingItem> {
@@ -105,7 +111,12 @@ export async function scanBarcode(request: ScanBarcodeRequest): Promise<ScanBarc
 }
 
 export async function processReceipt(request: ProcessReceiptRequest): Promise<ProcessReceiptResponse> {
-  const response = await axios.post<ProcessReceiptResponse>(`${API_BASE_URL}/api/v1/receiving/receive`, request);
+  const response = await axios.post<ProcessReceiptResponse>(`${API_BASE_URL}/api/v1/receiving/receive`, {
+    po_number: request.poNumber,
+    barcode: request.barcode,
+    vendor_id: request.vendorId,
+    qty: request.qty,
+  });
   return response.data;
 }
 
@@ -120,7 +131,8 @@ export async function completeIQC(request: CompleteIQCRequest): Promise<{
 
 export async function printLabel(lotId: number): Promise<{
   success: boolean;
-  labelUrl: string;
+  zpl: string;
+  printed: boolean;
 }> {
   const response = await axios.post(`${API_BASE_URL}/api/v1/receiving/print-label`, { lot_id: lotId });
   return response.data;
