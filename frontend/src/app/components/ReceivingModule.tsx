@@ -44,7 +44,7 @@ export default function ReceivingModule() {
     
     setScanError(null);
     try {
-      const response = await scanMutation.mutateAsync({ barcode: scannedBarcode });
+      const response = await scanMutation.mutateAsync({ barcode: scannedBarcode, vendorId: vendorId ?? undefined });
       
       if (response.success && response.parsed) {
         setParsedData({
