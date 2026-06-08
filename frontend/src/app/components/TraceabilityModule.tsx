@@ -94,10 +94,6 @@ export default function TraceabilityModule() {
     }
   };
 
-  const runExample = (val: string) => {
-    setSearchBarcode(val);
-  };
-
   const mapAndSetResult = (data: any) => {
     setTraceResult({
       barcode: data.barcode,
@@ -209,30 +205,6 @@ export default function TraceabilityModule() {
             className="px-8 py-3 bg-blue-600 text-white rounded-lg hover:bg-blue-700 transition-colors font-medium disabled:opacity-50"
           >
             {loading ? '查詢中...' : '查詢追溯'}
-          </button>
-        </div>
-
-        <div className="mt-4 flex flex-wrap gap-2 text-sm">
-          <button
-            type="button"
-            onClick={() => runExample('IC-001-240415-0001')}
-            className="px-3 py-1 bg-slate-100 text-slate-700 rounded hover:bg-slate-200"
-          >
-            範例: IC-001-240415-0001（內部批號）
-          </button>
-          <button
-            type="button"
-            onClick={() => runExample('240415-IC001-0001-W15')}
-            className="px-3 py-1 bg-slate-100 text-slate-700 rounded hover:bg-slate-200"
-          >
-            範例: 240415-IC001-0001-W15（內部條碼）
-          </button>
-          <button
-            type="button"
-            onClick={() => runExample('TI2024W15A')}
-            className="px-3 py-1 bg-slate-100 text-slate-700 rounded hover:bg-slate-200"
-          >
-            範例: TI2024W15A（供應商批號）
           </button>
         </div>
       </div>
