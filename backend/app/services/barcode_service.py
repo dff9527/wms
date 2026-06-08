@@ -1,7 +1,9 @@
+import re
+
 from sqlalchemy.orm import Session
 from app.core.barcode.parser import BarcodeParser
 from app.core.barcode.learner import PatternInferenceEngine
-from app.schemas.barcode import ParseResult, LearnResult, LearnRequest
+from app.schemas.barcode import ParseResult, LearnResult, LearnRequest, CreatePatternRequest
 from app.models.vendor import Vendor, BarcodePattern
 from app.core.config import settings
 
@@ -109,15 +111,63 @@ def learn_pattern(
     )
 
 
-def list_patterns(db: Session, vendor_id: int | None = None):
+def create_pattern(db: Session, req: CreatePatternRequest) -> BarcodePattern:
     """
-    List active barcode patterns, optionally filtered by vendor.
+    Manually create a barcode pattern. Validates the regex compiles before
+    persisting (never store an unvalidated regex — avoids parse-time crashes / ReDoS).
+    Raises ValueError on invalid regex or unknown vendor.
+    """
+    try:
+        re.compile(req.regex_rule)
+    except re.error as e:
+        raise ValueError(f"Invalid regex: {e}")
+
+    vendor = db.query(Vendor).filter(Vendor.vendor_id == req.vendor_id).first()
+    if vendor is None:
+        raise ValueError(f"Vendor {req.vendor_id} not found")
+
+    pattern = BarcodePattern(
+        vendor_id=req.vendor_id,
+        pattern_name=req.pattern_name,
+        regex_rule=req.regex_rule,
+        field_mapping=req.field_mapping,
+        validation_rules=req.validation_rules,
+        priority=req.priority,
+        is_active=True,
+    )
+    db.add(pattern)
+    db.commit()
+    db.refresh(pattern)
+    return pattern
+
+
+def set_pattern_active(db: Session, pattern_id: int, is_active: bool) -> BarcodePattern:
+    """Toggle a pattern's is_active flag. Raises ValueError if not found."""
+    pattern = (
+        db.query(BarcodePattern)
+        .filter(BarcodePattern.pattern_id == pattern_id)
+        .first()
+    )
+    if pattern is None:
+        raise ValueError(f"Pattern {pattern_id} not found")
+    pattern.is_active = is_active
+    db.commit()
+    db.refresh(pattern)
+    return pattern
+
+
+def list_patterns(db: Session, vendor_id: int | None = None, include_inactive: bool = False):
+    """
+    List barcode patterns, optionally filtered by vendor.
+    By default only active patterns; pass include_inactive=True for the admin view.
     Ordered by priority descending.
     """
-    query = db.query(BarcodePattern).filter(BarcodePattern.is_active == True)
-    
+    query = db.query(BarcodePattern)
+    if not include_inactive:
+        query = query.filter(BarcodePattern.is_active == True)
+
     if vendor_id is not None:
         query = query.filter(BarcodePattern.vendor_id == vendor_id)
-        
+
     return query.order_by(BarcodePattern.priority.desc()).all()
 

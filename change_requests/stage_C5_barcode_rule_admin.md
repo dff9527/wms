@@ -70,9 +70,20 @@ curl -s -X POST localhost:8000/api/v1/barcodes/patterns -H 'Content-Type: applic
 Build a new "Barcode Rule Management" admin module for the semiconductor WMS frontend, and wire it into the top navigation. Backend is the source of truth — do NOT change backend code, do NOT invent endpoints beyond the ones listed.
 
 Files to create/modify (only these):
-- frontend/src/app/components/BarcodeRuleModule.tsx   (new — the page)
-- frontend/src/app/api/barcodes.ts                    (new — typed API client)
-- the top-level component that renders the nav tabs (add a "條碼規則" tab that mounts BarcodeRuleModule)
+- frontend/src/app/components/BarcodeRuleModule.tsx   (new — the page; default export)
+- frontend/src/app/api/barcodes.ts                    (new — typed axios client)
+- frontend/src/app/App.tsx                            (add one nav tab — see exact wiring below)
+
+Nav wiring in App.tsx (it uses @radix-ui/react-tabs with TabsTrigger/TabsContent keyed by a string `value`; activeTab state already exists):
+- import BarcodeRuleModule from './components/BarcodeRuleModule';
+- import one more lucide-react icon, e.g. ScanLine, alongside the existing { Package, Warehouse, TruckIcon, Search, BarChart3 } import.
+- Add a new <TabsTrigger value="barcode-rules" ...> labelled 條碼規則 with the icon, using the SAME className string as the other triggers.
+- Add a matching <TabsContent value="barcode-rules" className="size-full p-0"><BarcodeRuleModule /></TabsContent>.
+- Place the new tab last (after 追溯管理). Do NOT change the other tabs or the default activeTab.
+
+API client convention (api/barcodes.ts) — match the other clients exactly:
+- `const API_BASE_URL = import.meta.env.VITE_API_URL || 'http://localhost:8000';`
+- one exported async function per endpoint, each wrapped in try/catch that rethrows with the backend `detail` message.
 
 Backend endpoints + exact response shapes:
   GET   /api/v1/vendors

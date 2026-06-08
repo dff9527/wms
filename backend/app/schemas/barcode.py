@@ -34,3 +34,26 @@ class LearnResult(BaseModel):
     pattern_id: Optional[int] = None
     saved: bool = False
 
+
+class CreatePatternRequest(BaseModel):
+    vendor_id: int
+    pattern_name: str
+    regex_rule: str
+    field_mapping: Dict
+    validation_rules: Optional[Dict] = None
+    priority: int = 100
+
+
+class PatternOut(BaseModel):
+    pattern_id: int
+    vendor_id: Optional[int] = None
+    pattern_name: str
+    is_active: bool
+
+    class Config:
+        from_attributes = True
+
+
+class SetPatternActiveRequest(BaseModel):
+    is_active: bool
+

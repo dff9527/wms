@@ -1,8 +1,22 @@
 from fastapi import APIRouter, Depends, HTTPException
 from sqlalchemy.orm import Session
 from app.api.deps import get_db
-from app.services.barcode_service import parse_barcode, learn_pattern, list_patterns
-from app.schemas.barcode import ScanRequest, ParseResult, LearnRequest, LearnResult
+from app.services.barcode_service import (
+    parse_barcode,
+    learn_pattern,
+    list_patterns,
+    create_pattern,
+    set_pattern_active,
+)
+from app.schemas.barcode import (
+    ScanRequest,
+    ParseResult,
+    LearnRequest,
+    LearnResult,
+    CreatePatternRequest,
+    PatternOut,
+    SetPatternActiveRequest,
+)
 
 router = APIRouter(prefix="/barcodes", tags=["barcodes"])
 
@@ -39,9 +53,39 @@ def learn_new_pattern(req: LearnRequest, db: Session = Depends(get_db)):
 
 
 @router.get("/patterns")
-def get_patterns(vendor_id: int | None = None, db: Session = Depends(get_db)):
+def get_patterns(
+    vendor_id: int | None = None,
+    include_inactive: bool = False,
+    db: Session = Depends(get_db),
+):
     """
-    List active barcode patterns. Filter by vendor_id if provided.
+    List barcode patterns. Filter by vendor_id if provided.
+    Pass include_inactive=true for the admin view (shows disabled rules too).
     """
-    return list_patterns(db, vendor_id=vendor_id)
+    return list_patterns(db, vendor_id=vendor_id, include_inactive=include_inactive)
+
+
+@router.post("/patterns", response_model=PatternOut, status_code=201)
+def add_pattern(req: CreatePatternRequest, db: Session = Depends(get_db)):
+    """
+    Manually create a barcode pattern. Returns 400 if the regex is invalid
+    or the vendor does not exist.
+    """
+    try:
+        return create_pattern(db, req)
+    except ValueError as e:
+        raise HTTPException(status_code=400, detail=str(e))
+
+
+@router.patch("/patterns/{pattern_id}", response_model=PatternOut)
+def toggle_pattern(
+    pattern_id: int,
+    req: SetPatternActiveRequest,
+    db: Session = Depends(get_db),
+):
+    """Enable/disable a barcode pattern. Returns 404 if not found."""
+    try:
+        return set_pattern_active(db, pattern_id, req.is_active)
+    except ValueError as e:
+        raise HTTPException(status_code=404, detail=str(e))
 
