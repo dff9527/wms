@@ -123,7 +123,7 @@ export default function PickingModule() {
     if (!selectedSo) return;
     
     try {
-      const response = await axios.post('/api/v1/shipping/confirm', {
+      await axios.post('/api/v1/shipping/confirm', {
         so_number: selectedSo,
         shipper: 'operator'
       });

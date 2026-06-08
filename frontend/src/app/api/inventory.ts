@@ -19,8 +19,12 @@ function mapToInventoryLotRow(data: any): InventoryLotRow {
     qtyReserved: data.quantity_reserved,
     location: data.location_code,
     status: data.lot_status,
-    manufactureDate: data.manufacture_date ?? null,
     expiryDate: data.expiry_date ?? null,
+    // These fields are required by InventoryLotRow but not yet returned by LotOut; default until backend exposes them.
+    vendorLotCode: data.vendor_lot_code ?? '',
+    description: data.description ?? '',
+    receiveDate: data.receive_date ?? '',
+    mslLevel: data.msl_level ?? 0,
     };
 }
 

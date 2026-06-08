@@ -2,17 +2,22 @@
   "pipeline": "b-web",
   "final_verdict": "FIX_NEEDED",
   "debug_iterations_used": 5,
-  "last_validation": "BASELINE_FILTERED: 1 pre-existing errors hidden, 0 new errors shown\nVALIDATION_RESULT: TYPE_ERROR\nValidation project path: /Users/jerryc1122/projects/wms\n\n===== FRONTEND VALIDATION =====\n===== frontend: npm install [PASS] =====\nexit_code: 0\nadded 1 package, and audited 317 packages in 751ms\n\n43 packages are looking for funding\n  run `npm fund` for details\n\nfound 0 vulnerabilities\n\n===== frontend: typecheck [FAIL] =====\nexit_code: 2\n═══════════════════════════════════════\nTypeScript: 1 errors in ",
-  "last_audit": "Looking at the validation report, UX review, and security review carefully.\n\n**Validation Report Analysis:**\n- `VALIDATION_RESULT: TYPE_ERROR` with 1 new error shown (but the report says \"0 new errors shown\" after baseline filtering — wait, it says \"1 pre-existing errors hidden, 0 new errors shown\"). Actually re-reading: \"BASELINE_FILTERED: 1 pre-existing errors hidden, 0 new errors shown\" but `VALIDATION_RESULT: TYPE_ERROR` with `exit_code: 2` and \"1 errors in 1 files\". This is contradictory — ",
+  "last_validation": "BASELINE_FILTERED: 2 pre-existing errors hidden, 0 new errors shown\nVALIDATION_RESULT: TYPE_ERROR\nValidation project path: /Users/jerryc1122/projects/wms\n\n===== FRONTEND VALIDATION =====\n===== frontend: npm install [PASS] =====\nexit_code: 0\nup to date, audited 317 packages in 437ms\n\n43 packages are looking for funding\n  run `npm fund` for details\n\n1 high severity vulnerability\n\nTo address all issues, run:\n  npm audit fix --force\n\nRun `npm audit` for details.\n\n===== frontend: typecheck [FAIL] ===",
+  "last_audit": "Looking at the validation report, I need to identify the 2 new TypeScript errors (TS6133 and TS2353) that were introduced.\n\nThe validation report says:\n- `VALIDATION_RESULT: TYPE_ERROR`\n- `TypeScript: 2 errors in 2 files`\n- `Top codes: TS6133 (1x), TS2353 (1x)`\n\nLet me analyze the code to find these errors:\n\n**TS6133** (unused variable/import): In `BarcodeRuleModule.tsx`, `ParseResult` is imported from `../api/barcodes` but the type is used in `useState<ParseResult | null>`. However, looking mor",
   "gap_analysis": [
     {
       "type": "audit_fix_not_applied",
-      "detail": "Remove the raw `// FIX: [fix_1] — ...` comment from inside the JSX return tree (between sibling div elements) — it renders as a visible text node in the browser; use `{/* ... */}` if a comment is need",
+      "detail": "Remove the default `React` import since the project uses the automatic JSX transform (React 17+), making the explicit import an unused variable that triggers TS6133.",
       "suggestion": "Debug agent failed to apply this fix"
     },
     {
       "type": "audit_fix_not_applied",
-      "detail": "Add `id: number` to the `PickWaveTask` type in `wms-inventory.ts`, include `\\",
+      "detail": "Fix the TS2353 error — likely caused by the `LearnPatternResponse` index signature `[key: string]: unknown` conflicting with the specific `inferred_regex?: string` property (string is assignable to un",
+      "suggestion": "Debug agent failed to apply this fix"
+    },
+    {
+      "type": "audit_fix_not_applied",
+      "detail": "After setAiResult in handleLearnPattern's success path, refetch patterns with getPatterns(selectedVendorId) and call setPatterns, as required by the change plan's 'on success refetch table' invariant.",
       "suggestion": "Debug agent failed to apply this fix"
     }
   ]
