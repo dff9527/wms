@@ -10,6 +10,7 @@ from app.api.v1 import traceability as traceability_v1
 from app.api.v1.auth import router as auth_router
 from app.api.v1.customers import router as customers_router
 from app.api.v1.barcodes import router as barcodes_router
+from app.api.v1.vendors import router as vendors_router
 
 app = FastAPI(title="WMS Semiconductor API", version="0.1.0")
 app.include_router(auth_router)
@@ -20,6 +21,7 @@ app.include_router(shipping_v1.router)
 app.include_router(traceability_v1.router)
 app.include_router(customers_router)
 app.include_router(barcodes_router, prefix="/api/v1")   # 變成 /api/v1/barcodes/*
+app.include_router(vendors_router, prefix="/api/v1")    # 變成 /api/v1/vendors/*
 
 app.add_middleware(
     CORSMiddleware,

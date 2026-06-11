@@ -1,5 +1,6 @@
 import re
 
+from sqlalchemy import func
 from sqlalchemy.orm import Session
 from app.core.barcode.parser import BarcodeParser
 from app.core.barcode.learner import PatternInferenceEngine
@@ -69,13 +70,17 @@ def learn_pattern(
                  db.add(vendor)
                  db.flush() # Get ID
             
+            # Validate regex from AI inference before saving
+            try:
+                re.compile(inference_result["regex_rule"])
+            except re.error as e:
+                raise ValueError(f"AI 推斷的 regex 無效: {e}")
+
             # Determine priority: get max existing priority for this vendor + 1
             max_priority = (
-                db.query(BarcodePattern.priority)
+                db.query(func.max(BarcodePattern.priority))
                 .filter(BarcodePattern.vendor_id == vendor.vendor_id)
-                .order_by(BarcodePattern.priority.desc())
-                .limit(1)
-                .scalar_subquery()
+                .scalar()
             )
             new_priority = (max_priority or 0) + 1
             

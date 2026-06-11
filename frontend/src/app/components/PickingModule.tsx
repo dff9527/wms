@@ -100,9 +100,10 @@ export default function PickingModule() {
     try {
       const response = await axios.get('/api/v1/picking/wave');
        // Map response into PickWaveTask[]
-      const tasks: PickWaveTask[] = response.data.map((item: any, index: number) => ({
-        sequence: item.sequence ?? index + 1,
-        location: item.location,
+       const tasks: PickWaveTask[] = response.data.map((item: any, index: number) => ({
+         sequence: item.sequence ?? index + 1,
+         taskId: item.task_id,
+         location: item.location,
         internalSku: item.internalSku,
         internalLotNumber: item.internalLotNumber,
         internalBarcode: item.internalBarcode,
@@ -154,10 +155,8 @@ export default function PickingModule() {
        // Backend pick task status is PENDING. Normalize for comparison.
       const pendingTasks = pickWave.filter(t => String(t.status).toLowerCase() === 'pending');
       for (const task of pendingTasks) {
-        // NOTE: Wave items from GET /wave do not have a `task_id` field (only GET /tasks does).
-        // We use sequence as fallback per existing logic, though backend may expect actual task IDs.
         await axios.post('/api/v1/picking/confirm', {
-          task_id: task.sequence, 
+          task_id: task.taskId,
           picked_qty: task.pickQty,
           picker: 'operator'
          });

@@ -60,6 +60,8 @@ class ShippingService:
             )
             self.db.add(txn)
             task.status = 'CONFIRMED'
+            if lot.quantity_on_hand == 0:
+                lot.lot_status = 'SHIPPED'
             details.append({
                 "internalLotNumber": lot.internal_lot_number,
                 "qty": task.pick_qty,

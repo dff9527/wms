@@ -171,6 +171,7 @@ class PickingEngine:
 
             wave.append({
                 "sequence": i,
+                "task_id": task.task_id,
                 "location": str(task.from_location_id) if task.from_location_id is not None else None,
                 "internalSku": lot.internal_sku if lot else '',
                 "internalLotNumber": lot.internal_lot_number if lot else '',

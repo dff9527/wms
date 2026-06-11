@@ -48,6 +48,7 @@ export interface InventoryLotRow extends WmsLotIdentifiers {
 
 export interface PickWaveTask extends WmsLotIdentifiers {
   sequence: number;
+  taskId: number;
   location: string;
   pickQty: number;
   receiveDate: string;
