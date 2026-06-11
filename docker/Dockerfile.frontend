@@ -9,12 +9,13 @@ RUN if [ -f package-lock.json ]; then npm ci; else npm install; fi
 
 COPY frontend/ .
 
-ARG VITE_API_URL=http://localhost:8000
-ENV VITE_API_URL=${VITE_API_URL}
+# (前端已全面改走相對路徑 /api/v1,不再需要 VITE_API_URL)
 
 # Work around optional-deps bug: force the Linux Rollup native binary for this image.
+# 依容器實際架構選 binary(Apple Silicon 主機 build 出來是 arm64,x86 主機是 x64)。
 RUN ROLLUP_VER=$(node -p "require('./node_modules/rollup/package.json').version") \
-  && npm install "@rollup/rollup-linux-x64-gnu@${ROLLUP_VER}" --no-save
+  && ROLLUP_ARCH=$(node -p "process.arch") \
+  && npm install "@rollup/rollup-linux-${ROLLUP_ARCH}-gnu@${ROLLUP_VER}" --no-save
 
 RUN npm run build
 

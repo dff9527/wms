@@ -1,6 +1,7 @@
 import axios from 'axios';
 
-const API_BASE_URL = import.meta.env.VITE_API_URL || 'http://localhost:8000';
+// 一律走相對路徑(dev 由 Vite proxy、正式由 nginx 轉發),不依賴 VITE_API_URL
+const API_BASE_URL = '';
 
 export interface Vendor {
   vendor_id: string;

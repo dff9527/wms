@@ -2,8 +2,8 @@ import axios from 'axios';
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
 import type { InventoryLotRow } from '../types/wms-inventory';
 
-// FIX: [fix_1] — Replace process.env with Vite-compatible import.meta.env to avoid TS2591 node types error
-const API_BASE_URL = (import.meta.env as Record<string, string>).VITE_API_URL || '/api/v1';
+// 一律走相對路徑(dev 由 Vite proxy、正式由 nginx 轉發),不依賴 VITE_API_URL
+const API_BASE_URL = '/api/v1';
 
 // Helper to map snake_case API response to camelCase Frontend Type
 function mapToInventoryLotRow(data: any): InventoryLotRow {

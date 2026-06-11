@@ -1,7 +1,8 @@
 import axios from 'axios';
 import type { ReceivingItem, ReceivingItemApiRaw, ReceivingListResponse } from '../types/receiving';
 
-const API_BASE_URL = import.meta.env.VITE_API_URL || 'http://localhost:8000';
+// 一律走相對路徑(dev 由 Vite proxy、正式由 nginx 轉發),不依賴 VITE_API_URL
+const API_BASE_URL = '';
 
 function normalizeStatus(s: string): ReceivingItem['lotStatus'] {
   const upper = String(s || '').toUpperCase();

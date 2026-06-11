@@ -7,7 +7,7 @@ CREATE TABLE IF NOT EXISTS users (
     username VARCHAR(50) UNIQUE NOT NULL,
     password_hash VARCHAR(200) NOT NULL,
     full_name VARCHAR(100),
-    role VARCHAR(20) DEFAULT 'operator' CHECK (role IN ('admin', 'operator', 'viewer')),
+    role VARCHAR(20) DEFAULT 'operator' CHECK (role IN ('admin', 'qc', 'supervisor', 'operator', 'viewer')),
     is_active BOOLEAN DEFAULT TRUE,
     created_at TIMESTAMP DEFAULT NOW()
 );
