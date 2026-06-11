@@ -10,6 +10,7 @@
 import os
 import sys
 from datetime import date, datetime, timedelta
+from app.utils.time import utcnow
 
 sys.path.insert(0, os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
 
@@ -58,7 +59,7 @@ def _make_lot(barcode, lot_number, qty, receive_days_ago, expiry_date=None):
         quantity_reserved=0,
         unit="PCS",
         lot_status="AVAILABLE",
-        receive_date=datetime.utcnow() - timedelta(days=receive_days_ago),
+        receive_date=utcnow() - timedelta(days=receive_days_ago),
         expiry_date=expiry_date,
     )
 

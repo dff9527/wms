@@ -3,6 +3,8 @@ import logging
 from datetime import datetime, timedelta
 from typing import Optional
 
+from app.utils.time import utcnow
+
 from fastapi import HTTPException, status
 from sqlalchemy.orm import Session
 
@@ -118,7 +120,7 @@ class ReceivingService:
         item_row = self.db.query(Item).filter(Item.internal_sku == internal_sku).first()
         expiry_date = None
         if item_row and item_row.msl_level and item_row.msl_level in MSL_SEALED_SHELF_LIFE_DAYS:
-            expiry_date = (datetime.utcnow() + timedelta(
+            expiry_date = (utcnow() + timedelta(
                 days=MSL_SEALED_SHELF_LIFE_DAYS[item_row.msl_level])).date()
 
         # 3. Generate Unique Identifiers
@@ -149,8 +151,8 @@ class ReceivingService:
             lot_status="QC_HOLD",
             iqc_result="PENDING",
             raw_scan_data=parsed_data,
-            created_at=datetime.utcnow(),
-            updated_at=datetime.utcnow(),
+            created_at=utcnow(),
+            updated_at=utcnow(),
         )
 
         self.db.add(new_lot)
@@ -168,7 +170,7 @@ class ReceivingService:
             executed_by=executed_by,
             device_id=device_id,
             notes=f"Received via PO {po_number}",
-            created_at=datetime.utcnow(),
+            created_at=utcnow(),
         )
         self.db.add(transaction)
 
@@ -253,7 +255,7 @@ class ReceivingService:
                 detail="Lot is not pending IQC.",
             )
 
-        now = datetime.utcnow()
+        now = utcnow()
 
         # 強制換標:供應商要求 relabel 時,須先列印內部標籤才能 IQC PASS 上架
         if result == "PASS":
@@ -326,8 +328,8 @@ class ReceivingService:
         lot = self.db.query(InventoryLot).filter(InventoryLot.lot_id == lot_id).first()
         if not lot:
             return
-        lot.raw_scan_data = {**(lot.raw_scan_data or {}), "label_printed_at": datetime.utcnow().isoformat()}
-        lot.updated_at = datetime.utcnow()
+        lot.raw_scan_data = {**(lot.raw_scan_data or {}), "label_printed_at": utcnow().isoformat()}
+        lot.updated_at = utcnow()
         self.db.commit()
 
     # ── read helpers used by the receiving API (list / detail / scan) ──────────

@@ -15,11 +15,12 @@ pillow==10.1.0
 pyzbar==0.1.9              # 需系統套件: apt-get install libzbar0
 
 # AI 條碼學習 (Round 2)
-anthropic==0.7.0
+anthropic>=0.40,<1.0
 
 # 認證與安全
 python-jose[cryptography]==3.3.0
 passlib[bcrypt]==1.7.4
+bcrypt==4.0.1
 
 # 快取與任務佇列 (選用)
 redis==5.0.1

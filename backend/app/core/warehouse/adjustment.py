@@ -5,6 +5,7 @@ from fastapi import HTTPException, status
 from sqlalchemy.orm import Session
 
 from app.models.inventory import InventoryLot, InventoryTransaction  # type: ignore
+from app.utils.time import utcnow
 
 
 class AdjustmentService:
@@ -38,7 +39,7 @@ class AdjustmentService:
 
         old_qty = lot.quantity_on_hand
         lot.quantity_on_hand = new_qty
-        lot.updated_at = datetime.utcnow()
+        lot.updated_at = utcnow()
 
         # Determine transaction type based on sign
         tx_type = "ADJUST"
@@ -54,7 +55,7 @@ class AdjustmentService:
             executed_by=executed_by,
             device_id=device_id,
             notes=notes,
-            created_at=datetime.utcnow(),
+            created_at=utcnow(),
         )
         
         self.db.add(transaction)
@@ -122,8 +123,8 @@ class AdjustmentService:
             quality_notes=f"Split from {parent_lot.internal_lot_number}",
             parent_lot_id=parent_lot.lot_id,
             raw_scan_data=parent_lot.raw_scan_data,
-            created_at=datetime.utcnow(),
-            updated_at=datetime.utcnow(),
+            created_at=utcnow(),
+            updated_at=utcnow(),
         )
 
         self.db.add(child_lot)
@@ -133,7 +134,7 @@ class AdjustmentService:
         old_parent_qty = parent_lot.quantity_on_hand
         new_parent_qty = old_parent_qty - quantity_to_split
         parent_lot.quantity_on_hand = new_parent_qty
-        parent_lot.updated_at = datetime.utcnow()
+        parent_lot.updated_at = utcnow()
 
         # Write Transactions
         
@@ -148,7 +149,7 @@ class AdjustmentService:
             executed_by=executed_by,
             device_id=device_id,
             notes=f"Split from {parent_lot.internal_lot_number}",
-            created_at=datetime.utcnow(),
+            created_at=utcnow(),
         )
         
         # 2. ADJUST/SPLIT transaction for the Parent (Negative change)
@@ -165,7 +166,7 @@ class AdjustmentService:
             executed_by=executed_by,
             device_id=device_id,
             notes=f"Split off {quantity_to_split} units to {child_lot.internal_lot_number}",
-            created_at=datetime.utcnow(),
+            created_at=utcnow(),
         )
 
         self.db.add(split_tx_child)
@@ -185,4 +186,3 @@ class AdjustmentService:
             "newInternalBarcode": child_lot.internal_barcode,
             "remainingParentQty": new_parent_qty,
         }
-

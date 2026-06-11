@@ -11,6 +11,7 @@ import os
 import sys
 import time
 from datetime import date, datetime, timedelta
+from app.utils.time import utcnow
 
 sys.path.insert(0, os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
 
@@ -60,7 +61,7 @@ def _seed(db):
                     base_unit="PCS"))
         db.commit()
 
-    base = datetime.utcnow()
+    base = utcnow()
     lots = [
         InventoryLot(
             internal_sku=SKU,

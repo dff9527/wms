@@ -16,6 +16,7 @@ import os
 import sys
 import threading
 from datetime import date, datetime, timedelta
+from app.utils.time import utcnow
 
 sys.path.insert(0, os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
 
@@ -80,7 +81,7 @@ def _seed_lot_and_orders():
             internal_sku=SKU, internal_barcode="INT-CONC-001",
             internal_lot_number="LOT-CONC-001", quantity_on_hand=1000,
             quantity_reserved=0, unit="PCS", lot_status="AVAILABLE",
-            receive_date=datetime.utcnow() - timedelta(days=1)))
+             receive_date=utcnow() - timedelta(days=1)))
         for i in (1, 2):
             so = SalesOrder(so_number=f"{SO_PREFIX}{i}", order_date=date.today(),
                             status="OPEN", lot_selection_rule="FIFO")
