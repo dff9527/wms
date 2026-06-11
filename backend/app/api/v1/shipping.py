@@ -11,19 +11,21 @@ from app.schemas.shipping import (
 )
 from app.models.customer import Customer
 
-try:
-    from app.db import get_db
-except ImportError:
-    from app.dependencies import get_db
+from app.api.deps import get_db, get_current_user
 
 router = APIRouter(prefix="/api/v1/shipping", tags=["shipping"])
 
 
 @router.post("/confirm", response_model=ConfirmShipmentResponse)
-def confirm_shipment(request: ConfirmShipmentRequest, db: Session = Depends(get_db)):
+def confirm_shipment(
+    request: ConfirmShipmentRequest,
+    db: Session = Depends(get_db),
+    current_user: dict = Depends(get_current_user),
+):
     try:
         service = ShippingService(db)
-        result = service.confirm_shipment(request.so_number, request.shipper, request.shipping_notes)
+        # shipper 以登入者為準,不信任 body
+        result = service.confirm_shipment(request.so_number, current_user["username"], request.shipping_notes)
         db.commit()
         return result
     except ValueError as e:

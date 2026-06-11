@@ -24,7 +24,7 @@ class AdjustmentService:
         Positive change = Add stock (RECEIVE/ADJUST IN)
         Negative change = Remove stock (SCRAP/ADJUST OUT)
         """
-        lot = self.db.query(InventoryLot).filter(InventoryLot.lot_id == lot_id).first()
+        lot = self.db.query(InventoryLot).filter(InventoryLot.lot_id == lot_id).with_for_update(of=InventoryLot).first()
         if not lot:
             raise HTTPException(status.HTTP_404_NOT_FOUND, "Lot not found")
 
@@ -81,7 +81,7 @@ class AdjustmentService:
         Child inherits all attributes from Parent except ID/Barcode/LotNumber.
         Sets parent_lot_id on Child.
         """
-        parent_lot = self.db.query(InventoryLot).filter(InventoryLot.lot_id == parent_lot_id).first()
+        parent_lot = self.db.query(InventoryLot).filter(InventoryLot.lot_id == parent_lot_id).with_for_update(of=InventoryLot).first()
         if not parent_lot:
             raise HTTPException(status.HTTP_404_NOT_FOUND, "Parent Lot not found")
 

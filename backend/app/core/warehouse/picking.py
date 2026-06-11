@@ -164,7 +164,10 @@ class PickingEngine:
         if required_date_code:
             query = query.filter(InventoryLot.vendor_date_code == required_date_code)
 
-        lots = query.all()
+        # row lock:避免並發配貨對同批次重複保留(SQLite 會忽略,PG 生效)。
+        # of=InventoryLot:model 的 location/vendor 是 lazy="joined"(outer join),
+        # PG 不允許 FOR UPDATE 鎖 outer join 的 nullable 側,只鎖主表。
+        lots = query.with_for_update(of=InventoryLot).all()
 
         # Filter out expired lots
         valid_lots = []
@@ -231,7 +234,13 @@ class PickingEngine:
         if task.status != 'PENDING':
             raise ValueError(f"Pick Task {task_id} 狀態為 {task.status},不可重複確認")
 
-        lot = task.lot or self.db.query(InventoryLot).filter(InventoryLot.lot_id == task.lot_id).first()
+        # row lock:確認揀貨時鎖住批次,避免並發扣帳(of= 同上,避開 eager outer join)
+        lot = (
+            self.db.query(InventoryLot)
+            .filter(InventoryLot.lot_id == task.lot_id)
+            .with_for_update(of=InventoryLot)
+            .first()
+        )
         if not lot:
             raise ValueError(f"Lot for task {task_id} not found")
 

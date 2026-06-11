@@ -11,7 +11,7 @@ from sqlalchemy.orm import Session
 from app.core.warehouse.receiving import ReceivingService
 from app.core.warehouse.putaway import PutAwayEngine
 from app.schemas.receiving import IQCRequest, ReceiveRequest, ReceiveResponse, ScanResult
-from app.db.session import get_db
+from app.api.deps import get_db, get_current_user, require_role
 from app.config import settings
 from app.core.printing.label_printer import LabelPrinter
 
@@ -128,7 +128,8 @@ def scan_barcode(
 @router.post("/receive")
 def receive_item(
     request: ReceiveRequest,
-    db: Session = Depends(get_db)
+    db: Session = Depends(get_db),
+    current_user: dict = Depends(get_current_user),
 ):
     """
     Parse body into ReceiveRequest (po_number, barcode/scannedBarcode, vendor_id, qty).
@@ -145,7 +146,8 @@ def receive_item(
             po_number=request.poNumber,
             scanned_barcode=request.scannedBarcode or "",
             vendor_id=request.vendorId,
-            quantity=request.quantity
+            quantity=request.quantity,
+            executed_by=current_user["username"],   # 以登入者為準,不信任 body
          )
     except ValueError as e:
         raise HTTPException(status_code=400, detail=str(e))
@@ -154,7 +156,8 @@ def receive_item(
 @router.post("/iqc")
 def complete_iqc(
     request: IQCRequest,
-    db: Session = Depends(get_db)
+    db: Session = Depends(get_db),
+    current_user: dict = Depends(require_role("admin", "qc")),  # IQC 限 QC/管理員
 ):
     """
     Parse IQCRequest {lotId, result, inspector, notes?}.
@@ -169,7 +172,7 @@ def complete_iqc(
         return service.complete_iqc(
             lot_id=request.lotId,
             result=request.result,
-            inspector=request.inspector,
+            inspector=current_user["username"],     # 以登入者為準,不信任 body
             notes=request.notes
          )
     except ValueError as e:

@@ -10,12 +10,7 @@ from app.schemas.picking import (
     ConfirmPickRequest, 
     ConfirmPickResponse
 )
-# Assuming get_db exists in app.db or similar based on existing routers
-try:
-    from app.db import get_db
-except ImportError:
-    # Fallback if structure differs slightly
-    from app.dependencies import get_db
+from app.api.deps import get_db, get_current_user
 
 router = APIRouter(prefix="/api/v1/picking", tags=["picking"])
 
@@ -47,10 +42,15 @@ def get_wave(picker: Optional[str] = None, db: Session = Depends(get_db)):
 
 
 @router.post("/confirm", response_model=ConfirmPickResponse)
-def confirm_pick(request: ConfirmPickRequest, db: Session = Depends(get_db)):
+def confirm_pick(
+    request: ConfirmPickRequest,
+    db: Session = Depends(get_db),
+    current_user: dict = Depends(get_current_user),
+):
     try:
         engine = PickingEngine(db)
-        result = engine.confirm_pick(request.task_id, request.picked_qty, request.picker)
+        # picker 以登入者為準,不信任 body
+        result = engine.confirm_pick(request.task_id, request.picked_qty, current_user["username"])
         db.commit()
         return result
     except ValueError as e:
