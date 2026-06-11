@@ -1,6 +1,7 @@
 import axios from 'axios';
 
-const API_BASE_URL = (import.meta.env as Record<string, string>).VITE_API_URL || '/api/v1';
+// 與其他模組一致：一律走相對路徑 /api/v1（dev 由 Vite proxy 轉發）
+const API_BASE_URL = '/api/v1';
 const TOKEN_KEY = 'wms_token';
 
 export interface LoginResponse {
@@ -62,8 +63,19 @@ export function initAuth(): boolean {
     axios.defaults.headers.common['Authorization'] = `Bearer ${token}`;
     return true;
   }
-  
+
   return false;
+}
+
+// Fetch current user from backend (used after restoring token on reload)
+export async function fetchCurrentUser(): Promise<UserInfo | null> {
+  try {
+    const response = await axios.get<UserInfo>(`${API_BASE_URL}/auth/me`);
+    currentUser = response.data;
+    return currentUser;
+  } catch {
+    return null;
+  }
 }
 
 // Setup axios response interceptor for 401 errors

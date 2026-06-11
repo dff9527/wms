@@ -7,7 +7,7 @@ import PickingModule from './components/PickingModule';
 import TraceabilityModule from './components/TraceabilityModule';
 import DashboardModule from './components/DashboardModule';
 import BarcodeRuleModule from './components/BarcodeRuleModule';
-import { login, logout, initAuth, setupAuthInterceptor, removeAuthInterceptor, getCurrentUser } from './api/auth';
+import { login, logout, initAuth, setupAuthInterceptor, removeAuthInterceptor, fetchCurrentUser } from './api/auth';
 
 export default function App() {
   const [activeTab, setActiveTab] = useState('dashboard');
@@ -21,15 +21,21 @@ export default function App() {
   useEffect(() => {
     const setupAuth = async () => {
       const hasToken = initAuth();
-      setIsAuthenticated(hasToken);
-      
+
       if (hasToken) {
-        const user = getCurrentUser();
+        // 重新整理後 currentUser 不在記憶體，打 /auth/me 還原（token 失效則回登入頁）
+        const user = await fetchCurrentUser();
         if (user) {
           setUsername(user.username);
+          setIsAuthenticated(true);
+        } else {
+          logout();
+          setIsAuthenticated(false);
         }
+      } else {
+        setIsAuthenticated(false);
       }
-      
+
       setIsLoading(false);
     };
     
