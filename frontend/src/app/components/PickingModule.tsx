@@ -11,7 +11,7 @@ interface SalesOrderItem {
   status: string;
   totalLines: number;
   totalQty: number;
-  fifoStrategy: string;
+  strategy: string;
 }
 
 export default function PickingModule() {
@@ -39,35 +39,16 @@ export default function PickingModule() {
     }[] 
   } | null>(null);
 
-  const [salesOrders, setSalesOrders] = useState<SalesOrderItem[]>([
-     {
-      soNumber: 'SO-2024-0342',
-      customer: '台積電',
-      orderDate: '2024-05-01',
-      status: 'allocated',
-      totalLines: 3,
-      totalQty: 8500,
-      fifoStrategy: 'FIFO',
-     },
-     {
-      soNumber: 'SO-2024-0343',
-      customer: '聯發科',
-      orderDate: '2024-05-02',
-      status: 'picking',
-      totalLines: 2,
-      totalQty: 5000,
-      fifoStrategy: 'FEFO',
-     },
-     {
-      soNumber: 'SO-2024-0344',
-      customer: '日月光',
-      orderDate: '2024-05-03',
-      status: 'pending',
-      totalLines: 4,
-      totalQty: 12000,
-      fifoStrategy: 'FIFO',
-     },
-   ]);
+  const [salesOrders, setSalesOrders] = useState<SalesOrderItem[]>([]);
+
+  const fetchSalesOrders = async () => {
+    try {
+      const response = await axios.get('/api/v1/picking/orders');
+      setSalesOrders(Array.isArray(response.data) ? response.data : []);
+    } catch (err) {
+      console.error('Failed to fetch sales orders', err);
+    }
+  };
 
   const handleAllocate = async (soNumber: string) => {
     setLoading(true);
@@ -84,10 +65,8 @@ export default function PickingModule() {
         details: Array.isArray(data.details) ? data.details : []
        });
 
-       // Update sales order status to allocated
-      setSalesOrders(prev => prev.map(o => o.soNumber === soNumber ? { ...o, status: 'allocated' } : o));
-
-       // Fetch wave after allocation
+       // Refresh order statuses from backend, then the wave
+      await fetchSalesOrders();
       await fetchPickWave();
      } catch (err: any) {
       setError(err.response?.data?.detail || 'Allocation failed');
@@ -175,8 +154,7 @@ export default function PickingModule() {
    };
 
   useEffect(() => {
-     // Fetch initial wave if needed, or wait for allocation
-     // Spec says: Run on mount and after a successful allocate.
+    fetchSalesOrders();
     fetchPickWave();
    }, []);
 
@@ -219,10 +197,11 @@ export default function PickingModule() {
              <h2 className="text-xl font-semibold text-slate-900">銷售訂單</h2>
              <p className="text-sm text-slate-500 mt-1">等待配貨與揀貨的訂單</p>
            </div>
-           <button type="button" className="px-4 py-2 bg-blue-600 text-white rounded-lg hover:bg-blue-700 transition-colors">
-             + 新增訂單
-           </button>
          </div>
+
+         {salesOrders.length === 0 && (
+           <p className="text-sm text-slate-400 py-6 text-center">目前沒有訂單</p>
+         )}
 
          <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4">
            {salesOrders.map((order) => (
@@ -258,7 +237,7 @@ export default function PickingModule() {
                </div>
                <div className="mt-3 pt-3 border-t border-slate-200 flex items-center justify-between">
                  <span className="text-xs text-slate-500">配貨策略</span>
-                 <span className="px-2 py-1 bg-purple-100 text-purple-700 rounded text-xs font-medium">{order.fifoStrategy}</span>
+                 <span className="px-2 py-1 bg-purple-100 text-purple-700 rounded text-xs font-medium">{order.strategy}</span>
                </div>
              </div>
            ))}
@@ -295,8 +274,7 @@ export default function PickingModule() {
              <div className="mt-4 pt-4 border-t border-slate-200">
                <div className="flex items-center justify-between flex-wrap gap-2">
                  <p className="text-sm text-slate-600">
-                   ✓ 依據 <span className="font-semibold">{allocation.strategy}</span> 自動分配（排序鍵：
-                   <span className="font-mono"> internal_lot_number / receive_date</span>）
+                   ✓ 依據 <span className="font-semibold">{allocation.strategy}</span> 自動分配
                    {allocation.strategy === 'FIFO' && ' · 最早收貨優先'}
                    {allocation.strategy === 'FEFO' && ' · 最早到期優先'}
                  </p>
@@ -328,7 +306,7 @@ export default function PickingModule() {
          <div className="flex items-center justify-between mb-4">
            <div>
              <h2 className="text-xl font-semibold text-slate-900">揀貨波次</h2>
-             <p className="text-sm text-slate-500">已依儲位路徑優化排序 · 揀貨掃描請使用 internal_barcode</p>
+             <p className="text-sm text-slate-500">已依儲位路徑優化排序 · 揀貨時請掃描內部條碼</p>
            </div>
            <div className="flex gap-2">
              <button type="button" className="px-4 py-2 bg-slate-100 text-slate-700 rounded-lg hover:bg-slate-200 transition-colors">
@@ -402,10 +380,7 @@ export default function PickingModule() {
              </div>
              <div className="text-sm text-blue-900">
                <p className="font-medium mb-1">路徑優化提示</p>
-               <p className="text-blue-700">
-                揀貨路徑已依儲位編號排序 (A-01 → A-02 → B-01)，減少行走距離。預計完成時間:{' '}
-                 <span className="font-semibold">約 15 分鐘</span>
-               </p>
+               <p className="text-blue-700">揀貨路徑已依儲位編號排序，減少行走距離。</p>
              </div>
            </div>
          </div>

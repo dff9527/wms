@@ -1,5 +1,5 @@
 import { useMemo, useState } from 'react';
-import { ScanBarcode, Package, CheckCircle2, Printer, Upload, AlertTriangle } from 'lucide-react';
+import { ScanBarcode, Package, CheckCircle2, Printer, AlertTriangle } from 'lucide-react';
 import ReceivingList from './receiving/ReceivingList';
 import ReceivingDetail from './receiving/ReceivingDetail';
 import { useReceivingList, useScanBarcode, useProcessReceipt, useCompleteIQC } from '../hooks/useReceivingQueries';
@@ -20,7 +20,7 @@ export default function ReceivingModule() {
   const [scanError, setScanError] = useState<string | null>(null);
 
   // State for receive/iqc flow
-  const [poNumber, setPoNumber] = useState('PO-2024-0501');
+  const [poNumber, setPoNumber] = useState('');
   const [vendorId, setVendorId] = useState<number | null>(1);
   const [receivedLotId, setReceivedLotId] = useState<number | null>(null);
   const [suggestedLocation, setSuggestedLocation] = useState<string | null>(null);
@@ -37,7 +37,8 @@ export default function ReceivingModule() {
     return [];
        }, [data?.items, isPending]);
 
-  const showDemoBanner = isError || (!isPending && !!data?.items && data.items.length === 0);
+  // 只在 API 連線失敗時顯示警示;空清單是正常狀態
+  const showErrorBanner = isError;
 
   const handleScanBarcode = async () => {
     if (!scannedBarcode) return;
@@ -115,15 +116,12 @@ export default function ReceivingModule() {
 
   return (
          <div className="p-6 space-y-6">
-           {showDemoBanner && (
+           {showErrorBanner && (
              <div className="flex items-start gap-3 rounded-lg border border-amber-200 bg-amber-50 px-4 py-3 text-sm text-amber-900">
                <AlertTriangle className="size-5 shrink-0 mt-0.5" />
                <div>
-                 <p className="font-medium">使用演示資料載入清單</p>
-                 <p className="mt-1 text-amber-800/90">
-                   {isError ? '無法連線後端 `/api/v1/receiving/list`，已改顯示本地 fallback。' : null}
-                   {!isError && data?.items && data.items.length === 0 ? '後端回傳空白清單，已改顯示演示列。' : null}
-                 </p>
+                 <p className="font-medium">收貨清單載入失敗</p>
+                 <p className="mt-1 text-amber-800/90">無法連線伺服器，請確認後端服務狀態後重新整理。</p>
                </div>
              </div>
            )}
@@ -172,9 +170,6 @@ export default function ReceivingModule() {
                      <p className="mt-2 text-sm text-red-600">{scanError}</p>
                    )}
                
-                   <p className="text-xs text-slate-500 mt-2">
-                正式環境將呼叫 POST `/api/v1/receiving/scan`。確認收貨由 POST `/receive` 產生 internal 批號／條碼。
-                   </p>
                  </div>
 
                  <div className="pt-4 border-t border-slate-200">
@@ -319,17 +314,7 @@ export default function ReceivingModule() {
              <div className="flex flex-wrap items-center justify-between gap-4">
                <div>
                  <h2 className="text-xl font-semibold text-slate-900">收貨清單</h2>
-                 <p className="text-xs text-slate-500 mt-1">
-              internal_sku → internal_lot_number → internal_barcode · vendor_pn / vendor_lot_code / vendor_date_code（原廠追溯）
-                 </p>
                </div>
-               <button
-            type="button"
-            className="px-4 py-2 bg-blue-600 text-white rounded-lg hover:bg-blue-700 transition-colors flex items-center gap-2 shrink-0"
-               >
-                 <Upload className="size-4" />
-            匯入採購單
-               </button>
              </div>
 
              <ReceivingList items={rows} onViewDetails={openDetail} />

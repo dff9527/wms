@@ -162,7 +162,6 @@ export default function App() {
           <div className="flex items-center gap-4">
             <div className="text-right">
               <p className="text-sm font-medium text-slate-700">操作員: {username}</p>
-              <p className="text-xs text-slate-500">倉庫 A | ESD 管控區</p>
             </div>
             <button
               onClick={handleLogout}

@@ -60,6 +60,45 @@ def confirm_pick(
         raise HTTPException(status_code=400, detail=msg)
 
 
+@router.get("/orders")
+def list_orders(db: Session = Depends(get_db)):
+    """銷售訂單清單(揀貨頁卡片用),最近 100 筆。"""
+    from app.models.order import SalesOrder, SOLine
+    from app.models.customer import Customer
+
+    sos = (
+        db.query(SalesOrder)
+        .order_by(SalesOrder.order_date.desc(), SalesOrder.so_id.desc())
+        .limit(100)
+        .all()
+    )
+
+    customer_ids = {so.customer_id for so in sos if so.customer_id is not None}
+    cmap = {}
+    if customer_ids:
+        for c in db.query(Customer).filter(Customer.customer_id.in_(customer_ids)).all():
+            cmap[c.customer_id] = c.customer_name
+
+    so_ids = [so.so_id for so in sos]
+    lines_by_so: dict = {}
+    if so_ids:
+        for line in db.query(SOLine).filter(SOLine.so_id.in_(so_ids)).all():
+            lines_by_so.setdefault(line.so_id, []).append(line)
+
+    return [
+        {
+            "soNumber": so.so_number,
+            "customer": cmap.get(so.customer_id, ""),
+            "orderDate": so.order_date.isoformat() if so.order_date else "",
+            "status": so.status,
+            "totalLines": len(lines_by_so.get(so.so_id, [])),
+            "totalQty": sum(l.ordered_qty for l in lines_by_so.get(so.so_id, [])),
+            "strategy": so.lot_selection_rule or "FIFO",
+        }
+        for so in sos
+    ]
+
+
 @router.get("/tasks")
 def list_tasks(db: Session = Depends(get_db)):
     from app.models.order import PickTask

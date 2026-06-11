@@ -144,7 +144,7 @@ export default function DashboardModule() {
             {statsData.map((stat, idx) => (
               <div key={idx} className={`bg-white rounded-lg border ${stat.isMock ? 'border-dashed border-slate-300' : 'border-slate-200'} p-6 relative overflow-hidden`}>
                  {stat.isMock && (
-                   <span className="absolute top-2 right-2 px-1.5 py-0.5 bg-slate-100 text-[10px] uppercase tracking-wider font-bold text-slate-500 rounded">Mock</span>
+                   <span className="absolute top-2 right-2 px-1.5 py-0.5 bg-slate-100 text-[10px] tracking-wider font-bold text-slate-500 rounded">尚未提供</span>
                  )}
                 <div className="flex items-start justify-between">
                   <div>
@@ -175,7 +175,7 @@ export default function DashboardModule() {
           <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
             {/* Bar Chart - Mock/No Endpoint */}
             <div className="bg-white rounded-lg border border-dashed border-slate-300 p-6 relative min-h-[400px] flex flex-col">
-               <span className="absolute top-4 right-4 px-1.5 py-0.5 bg-slate-100 text-[10px] uppercase tracking-wider font-bold text-slate-500 rounded">Mock — 無對應 API</span>
+               <span className="absolute top-4 right-4 px-1.5 py-0.5 bg-slate-100 text-[10px] tracking-wider font-bold text-slate-500 rounded">尚未提供</span>
                 <h3 className="text-lg font-semibold text-slate-900 mb-4">每日收發貨趨勢</h3>
                 <div className="flex-1 flex items-center justify-center text-slate-400 italic">
                無歷史交易資料來源
@@ -215,7 +215,7 @@ export default function DashboardModule() {
 
           {/* Recent Activities - Mock/No Endpoint */}
           <div className="bg-white rounded-lg border border-dashed border-slate-300 p-6 relative min-h-[200px] flex flex-col">
-             <span className="absolute top-4 right-4 px-1.5 py-0.5 bg-slate-100 text-[10px] uppercase tracking-wider font-bold text-slate-500 rounded">Mock — 無對應 API</span>
+             <span className="absolute top-4 right-4 px-1.5 py-0.5 bg-slate-100 text-[10px] tracking-wider font-bold text-slate-500 rounded">尚未提供</span>
               <h3 className="text-lg font-semibold text-slate-900 mb-4">最近活動</h3>
               <div className="flex-1 flex items-center justify-center text-slate-400 italic">
              無即時活動串流來源

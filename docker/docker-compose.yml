@@ -9,6 +9,11 @@ services:
       - "5434:5432"
     volumes:
       - postgres_data:/var/lib/postgresql/data
+      # 首次啟動(空 volume)自動建 schema + users/customers 表 + 供應商 seed。
+      # 依檔名排序執行;volume 已存在時不會重跑。
+      - ../change_requests/schema.sql:/docker-entrypoint-initdb.d/01_schema.sql:ro
+      - ../change_requests/stage_A3_A6_tables.sql:/docker-entrypoint-initdb.d/02_auth_tables.sql:ro
+      - ../change_requests/seed_patterns.sql:/docker-entrypoint-initdb.d/03_seed_patterns.sql:ro
     healthcheck:
       test: ["CMD-SHELL", "pg_isready -U wms_user -d wms_semiconductor"]
       interval: 5s
@@ -29,6 +34,11 @@ services:
     environment:
       DATABASE_URL: postgresql://wms_user:wms_password@db:5432/wms_semiconductor
       REDIS_URL: redis://redis:6379/0
+      # .env 被 .dockerignore 排除不會進映像;SECRET_KEY 必須在這裡給,
+      # 否則 app/core/config.py 的啟動驗證(≥32 字元)會讓容器直接 crash。
+      # 正式環境請用 WMS_SECRET_KEY 環境變數覆蓋,不要用預設值。
+      SECRET_KEY: ${WMS_SECRET_KEY:-docker-dev-secret-key-change-me-0123456789abcdef}
+      CLAUDE_API_KEY: ${CLAUDE_API_KEY:-}
     depends_on:
       db:
         condition: service_healthy

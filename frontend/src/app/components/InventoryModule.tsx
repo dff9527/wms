@@ -1,6 +1,6 @@
 import { useState } from 'react';
 // FIX: [fix_2] — Remove unused import 'Package2' to resolve TS6133 error.
-import { Search, MapPin, Filter, Calendar, AlertCircle, Loader2 } from 'lucide-react';
+import { Search, MapPin, Calendar, AlertCircle, Loader2 } from 'lucide-react';
 import type { InventoryLotRow, InventoryLotRowStatus } from '../types/wms-inventory';
 import { useInventoryLots } from '../api/inventory';
 
@@ -13,13 +13,6 @@ export default function InventoryModule() {
 
    // FIX: [fix_2] — Remove .lots property access since lotsData is already InventoryLotRow[]
   const inventoryData: InventoryLotRow[] = lotsData ?? [];
-
-  const locationMap = [
-       { zone: 'A區', aisles: 3, racks: 45, occupancy: 78, color: 'bg-blue-500' },
-       { zone: 'B區', aisles: 2, racks: 30, occupancy: 62, color: 'bg-green-500' },
-       { zone: 'C區', aisles: 2, racks: 25, occupancy: 45, color: 'bg-yellow-500' },
-       { zone: 'D區', aisles: 1, racks: 15, occupancy: 34, color: 'bg-purple-500' },
-     ];
 
   const getStatusBadge = (status: InventoryLotRowStatus) => {
     // backend lot_status is UPPERCASE (AVAILABLE/RESERVED/QC_HOLD/QUARANTINE/EXPIRED/SHIPPED);
@@ -75,59 +68,17 @@ export default function InventoryModule() {
               type="text"
               value={searchTerm}
               onChange={(e) => setSearchTerm(e.target.value)}
-              placeholder="搜尋 internal_sku、internal_lot_number、internal_barcode、儲位…"
+              placeholder="搜尋料號、批號、條碼或儲位…"
               className="w-full pl-10 pr-4 py-2 border border-slate-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500"
                />
              </div>
-             <button type="button" className="px-4 py-2 bg-slate-100 text-slate-700 rounded-lg hover:bg-slate-200 transition-colors flex items-center gap-2">
-               <Filter className="size-4" />
-            進階篩選
-             </button>
-           </div>
-         </div>
-
-         <div className="bg-white rounded-lg border border-slate-200 p-6">
-           <div className="flex items-center gap-3 mb-4">
-             <MapPin className="size-6 text-blue-600" />
-             <h2 className="text-xl font-semibold text-slate-900">儲位配置</h2>
-           </div>
-
-           <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-4">
-             {locationMap.map((zone, idx) => (
-               <div key={idx} className="border border-slate-200 rounded-lg p-4 hover:shadow-md transition-shadow">
-                 <div className="flex items-center justify-between mb-3">
-                   <h3 className="text-lg font-semibold text-slate-900">{zone.zone}</h3>
-                   <div className={`${zone.color} size-3 rounded-full`}></div>
-                 </div>
-                 <div className="space-y-2 text-sm text-slate-600">
-                   <div className="flex justify-between">
-                     <span>走道數</span>
-                     <span className="font-medium text-slate-900">{zone.aisles}</span>
-                   </div>
-                   <div className="flex justify-between">
-                     <span>貨架數</span>
-                     <span className="font-medium text-slate-900">{zone.racks}</span>
-                   </div>
-                   <div className="flex justify-between items-center">
-                     <span>使用率</span>
-                     <span className="font-medium text-slate-900">{zone.occupancy}%</span>
-                   </div>
-                 </div>
-                 <div className="mt-3 h-2 bg-slate-200 rounded-full overflow-hidden">
-                   <div className={`h-full ${zone.color} transition-all`} style={{ width: `${zone.occupancy}%` }}></div>
-                 </div>
-               </div>
-             ))}
            </div>
          </div>
 
          <div className="bg-white rounded-lg border border-slate-200">
            <div className="p-6 border-b border-slate-200">
              <h2 className="text-xl font-semibold text-slate-900">庫存明細 (Lot 級別)</h2>
-             <p className="text-sm text-slate-500 mt-1">
-            總計 {inventoryData.length} 個批次 · 料號 = internal_sku · 內部批號 = internal_lot_number · 內部條碼 = internal_barcode · 供應商批號 =
-            vendor_lot_code
-             </p>
+             <p className="text-sm text-slate-500 mt-1">總計 {inventoryData.length} 個批次</p>
            </div>
 
            {inventoryData.length === 0 ? (
@@ -213,7 +164,7 @@ export default function InventoryModule() {
                <div className="space-y-4">
                  <div className="grid grid-cols-2 gap-4">
                    <div>
-                     <label className="text-sm text-slate-600">料號 (internal_sku)</label>
+                     <label className="text-sm text-slate-600">料號</label>
                      <p className="text-lg font-mono font-semibold text-slate-900">{selectedLot.internalSku}</p>
                      <p className="text-sm text-slate-500">{selectedLot.description}</p>
                    </div>
@@ -225,15 +176,15 @@ export default function InventoryModule() {
 
                  <div className="grid grid-cols-1 gap-3 pt-4 border-t border-slate-200">
                    <div>
-                     <label className="text-sm text-slate-600">內部批號 (internal_lot_number)</label>
+                     <label className="text-sm text-slate-600">內部批號</label>
                      <p className="text-base font-mono font-medium text-slate-900">{selectedLot.internalLotNumber}</p>
                    </div>
                    <div>
-                     <label className="text-sm text-slate-600">內部條碼 (internal_barcode)</label>
+                     <label className="text-sm text-slate-600">內部條碼</label>
                      <p className="text-base font-mono font-medium text-slate-900">{selectedLot.internalBarcode}</p>
                    </div>
                    <div>
-                     <label className="text-sm text-slate-600">供應商批號 (vendor_lot_code)</label>
+                     <label className="text-sm text-slate-600">供應商批號</label>
                      <p className="text-base font-mono font-medium text-slate-900">{selectedLot.vendorLotCode}</p>
                    </div>
                  </div>

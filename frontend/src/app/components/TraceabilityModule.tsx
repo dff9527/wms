@@ -194,7 +194,7 @@ export default function TraceabilityModule() {
               value={searchBarcode}
               onChange={(e) => setSearchBarcode(e.target.value)}
               onKeyDown={(e) => e.key === 'Enter' && handleSearch()}
-              placeholder="輸入 internal_lot_number、internal_barcode 或 vendor_lot_code…"
+              placeholder="輸入內部批號、內部條碼或供應商批號…"
               className="w-full px-4 py-3 border border-slate-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500"
             />
           </div>
@@ -357,9 +357,9 @@ export default function TraceabilityModule() {
         <div className="bg-white rounded-lg border border-slate-200 p-12">
           <div className="flex flex-col items-center justify-center text-slate-400">
             <Search className="size-16 mb-4" />
-            <p className="text-lg font-medium text-slate-600 mb-2">輸入 internal_lot_number、internal_barcode 或 vendor_lot_code</p>
+            <p className="text-lg font-medium text-slate-600 mb-2">輸入內部批號、內部條碼或供應商批號</p>
             <p className="text-sm text-slate-500 text-center max-w-lg">
-              正向追溯（供應商→客戶）與逆向對照皆以 inventory_lots 三層識別為核心：internal_sku、internal_lot_number、internal_barcode；vendor_lot_code 對應原廠。
+              可查詢批次的完整流向：供應商來源、收貨與檢驗紀錄、目前庫存位置與出貨客戶。
             </p>
           </div>
         </div>
