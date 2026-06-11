@@ -69,8 +69,9 @@
 - ~~並發/庫存鎖~~ ✅ Stage F 完成
 - ~~角色權限~~ ✅ Stage F 完成(粒度可再細化,目前三級:admin / qc / supervisor+operator)
 - ~~executed_by 串接~~ ✅ Stage F 完成
-- **使用者管理 API**:目前建帳號/改密碼要直接操作 DB,缺 CRUD 端點(適合開 Cline 任務)。
-- **並發實測**:鎖已加但沒有並發整合測試(多執行緒同時 allocate 驗證無超賣/無死鎖)。
+- ~~使用者管理 API~~ ✅ Stage G1(/api/v1/users CRUD,限 admin,防自我停權;注意:admin 改自己密碼目前無端點)
+- ~~並發整合測試~~ ✅ `tests/test_concurrent_allocation.py`(防超賣 + 防重複扣帳,PG only)
+- ~~Docker 修復~~ ✅(nginx /api proxy、SECRET_KEY、initdb 自動建 schema;`docker compose up --build` 實測待跑)
 - **Redis / Celery**:requirements 有、完全未使用(標籤列印佇列、AI 學習非同步化是合理用途)。
 - **Docker 部署實測**:compose 寫好沒跑過;`VITE_API_URL` 與前端相對路徑的關係要驗(auth.ts 已改走相對路徑,其他模組本來就是)。
 - **anthropic SDK 版本**:requirements.txt 鎖 `anthropic==0.7.0`,但 learner.py 用 messages API,需升版(本機 venv 裝的是新版所以能動,requirements 要同步)。
@@ -83,8 +84,10 @@
 - ~~test_fifo_picking.py 救活~~ ✅(3 tests,連 5433,自動清理)
 - ~~spec 附錄 A 性能測試~~ ✅(`test_fifo_performance.py`)
 - ~~前端零自動化測試~~ ✅ vitest 起步(auth.ts 9 tests;`npm test`)
-- 前端元件測試還很薄:六個 Module 都沒有 render 測試(需要 @testing-library/react + mock 較多,投報率中等)。
-- 並發整合測試(見 B 區)。
+- ~~前端元件測試~~ ✅ Stage G3(六個 Module render smoke 測試,vitest 共 15 tests)
+- ~~anthropic/bcrypt 版本、utcnow 棄用~~ ✅ Stage G2
+
+**2026-06-11 追加(UI 去演示化)**:收貨演示橫幅/開發註記/寫死 PO、Dashboard Mock 標籤、庫存假儲位配置區、揀貨寫死 SO 卡片(改接新端點 `GET /api/v1/picking/orders`)、追溯欄位名說明、條碼規則表單加 SOP、刪除 receivingFallback.ts。
 
 ---
 

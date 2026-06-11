@@ -10,10 +10,11 @@
 import os
 import sys
 import time
-from datetime import date, datetime, timedelta
-from app.utils.time import utcnow
+from datetime import date, timedelta
 
 sys.path.insert(0, os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
+
+from app.utils.time import utcnow
 
 import pytest
 
