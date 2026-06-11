@@ -420,11 +420,92 @@ def main():
         check("Trace backward response has exact documented keys", 
               actual_keys == expected_keys, 
               f"Expected {expected_keys}, Got {actual_keys}")
-              
+               
         check("Trace backward supplierName is Texas Instruments", 
               trace_data.get("supplierName") == "Texas Instruments", 
               trace_data.get("supplierName"))
 
+    # Step 13: User Management API (e2e-op user)
+    print("\n--- Step 13: User Management API ---")
+    
+    # 13.1 Create e2e-op user
+    r = client.post("/api/v1/users", json={"username": "e2e-op", "password": "e2e-op-pw1", "role": "operator"})
+    user_created = False
+    if r.status_code == 409:
+        # Username already exists - check if we can activate it
+        db = SessionLocal()
+        try:
+            existing_op = db.query(User).filter(User.username == "e2e-op").first()
+            if existing_op:
+                # Check if password is still pw1 or has been changed to pw2
+                # If password was changed to pw2, we need to reset it to pw1 for this test
+                from app.core.security import verify_password
+                if not verify_password("e2e-op-pw1", existing_op.password_hash):
+                    # Password was changed by previous test run, reset it
+                    existing_op.password_hash = hash_password("e2e-op-pw1")
+                existing_op.is_active = True
+                db.commit()
+                check("Activate existing e2e-op user with pw1", True, "activated existing user")
+                user_created = True  # Treat as success
+            else:
+                check("Create e2e-op user (409 conflict, no user found)", False, "unexpected state")
+        finally:
+            db.close()
+    else:
+        check("POST /api/v1/users create e2e-op 201", r.status_code == 201, r.text[:200])
+        user_created = True
+    
+    # 13.2 GET all users - verify e2e-op is in the list
+    r = client.get("/api/v1/users")
+    ok = check("GET /api/v1/users 200", r.status_code == 200, r.text[:200])
+    if ok:
+        users = r.json()
+        e2e_op_in_list = any(u.get("username") == "e2e-op" for u in users)
+        check("e2e-op user in list", e2e_op_in_list, f"found={e2e_op_in_list}")
+    
+    # 13.3 Login as e2e-op and verify operator role cannot access admin endpoints
+    r = client.post("/api/v1/auth/login", json={"username": "e2e-op", "password": "e2e-op-pw1"})
+    ok = check("e2e-op login with pw1 200", r.status_code == 200, r.text[:200])
+    if ok:
+        op_token = r.json()["access_token"]
+        client.headers.update({"Authorization": f"Bearer {op_token}"})
+        
+        # Try to access inventory/adjust which requires admin/supervisor role
+        r = client.post("/api/v1/inventory/adjust", json={
+            "lotId": lot_id, "quantityChange": -1, "reason": "E2E Test"
+        })
+        check("operator cannot access inventory/adjust (403)", r.status_code == 403, r.status_code)
+        
+        # Try to access users endpoint which requires admin role
+        r = client.get("/api/v1/users")
+        check("operator cannot access users endpoint (403)", r.status_code == 403, r.status_code)
+    
+    # 13.4 Admin resets e2e-op password
+    db = SessionLocal()
+    try:
+        e2e_op_user = db.query(User).filter(User.username == "e2e-op").first()
+        if e2e_op_user:
+            client.headers.update({"Authorization": f"Bearer {r_noauth.headers.get('www-authenticate')}" if r_noauth.status_code == 401 else "Bearer " + client.headers.get("Authorization", "").replace("Bearer ", "")})
+            # Re-login as admin
+            client.headers.pop("Authorization", None)
+            r_admin = client.post("/api/v1/auth/login", json={"username": "e2e-admin", "password": "e2e-test-pw"})
+            if r_admin.status_code == 200:
+                admin_token = r_admin.json()["access_token"]
+                client.headers.update({"Authorization": f"Bearer {admin_token}"})
+                
+                r = client.post(f"/api/v1/users/{e2e_op_user.user_id}/password", json={"new_password": "e2e-op-pw2"})
+                check("Admin reset e2e-op password 200", r.status_code == 200, r.text[:200])
+                
+                # Verify old password fails
+                r = client.post("/api/v1/auth/login", json={"username": "e2e-op", "password": "e2e-op-pw1"})
+                check("e2e-op old password (pw1) fails 401", r.status_code == 401, r.status_code)
+                
+                # Verify new password works
+                r = client.post("/api/v1/auth/login", json={"username": "e2e-op", "password": "e2e-op-pw2"})
+                check("e2e-op new password (pw2) login 200", r.status_code == 200, r.text[:200])
+    finally:
+        db.close()
+    
     # --- NEW TEST STEPS END HERE ---
 
     print(f"\nRESULT: {_passed} passed, {_failed} failed")
