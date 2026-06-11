@@ -48,7 +48,10 @@ def confirm_pick(request: ConfirmPickRequest, db: Session = Depends(get_db)):
         db.commit()
         return result
     except ValueError as e:
-        raise HTTPException(status_code=404, detail=str(e))
+        msg = str(e)
+        if "not found" in msg:
+            raise HTTPException(status_code=404, detail=msg)
+        raise HTTPException(status_code=400, detail=msg)
 
 
 @router.get("/tasks")

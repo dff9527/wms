@@ -191,11 +191,21 @@ class PickingEngine:
         if not task:
             raise ValueError(f"Pick Task {task_id} not found")
 
+        if task.status != 'PENDING':
+            raise ValueError(f"Pick Task {task_id} 狀態為 {task.status},不可重複確認")
+
         lot = task.lot or self.db.query(InventoryLot).filter(InventoryLot.lot_id == task.lot_id).first()
         if not lot:
             raise ValueError(f"Lot for task {task_id} not found")
 
         picked = int(picked_qty)
+        if picked <= 0:
+            raise ValueError("picked_qty 必須為正整數")
+        if picked > task.pick_qty:
+            raise ValueError(f"實揀數量 {picked} 超過任務數量 {task.pick_qty}")
+        if picked > lot.quantity_on_hand:
+            raise ValueError(f"實揀數量 {picked} 超過現有庫存 {lot.quantity_on_hand}")
+
         qty_before = lot.quantity_on_hand
         lot.quantity_on_hand -= picked
         # picking consumes the reservation it created at allocation time

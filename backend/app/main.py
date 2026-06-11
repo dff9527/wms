@@ -1,4 +1,4 @@
-from fastapi import FastAPI
+from fastapi import Depends, FastAPI
 from fastapi.middleware.cors import CORSMiddleware
 
 import app.models         # noqa: F401  確保所有 ORM model 載入、Base.metadata 完整
@@ -11,17 +11,18 @@ from app.api.v1.auth import router as auth_router
 from app.api.v1.customers import router as customers_router
 from app.api.v1.barcodes import router as barcodes_router
 from app.api.v1.vendors import router as vendors_router
+from app.api.deps import get_current_user
 
 app = FastAPI(title="WMS Semiconductor API", version="0.1.0")
 app.include_router(auth_router)
-app.include_router(receiving_v1.router, prefix="/api/v1/receiving")
-app.include_router(inventory_v1.router, prefix="/api/v1/inventory")
-app.include_router(picking_v1.router)
-app.include_router(shipping_v1.router)
-app.include_router(traceability_v1.router)
+app.include_router(receiving_v1.router, prefix="/api/v1/receiving", dependencies=[Depends(get_current_user)])
+app.include_router(inventory_v1.router, prefix="/api/v1/inventory", dependencies=[Depends(get_current_user)])
+app.include_router(picking_v1.router, dependencies=[Depends(get_current_user)])
+app.include_router(shipping_v1.router, dependencies=[Depends(get_current_user)])
+app.include_router(traceability_v1.router, dependencies=[Depends(get_current_user)])
 app.include_router(customers_router)
-app.include_router(barcodes_router, prefix="/api/v1")   # 變成 /api/v1/barcodes/*
-app.include_router(vendors_router, prefix="/api/v1")    # 變成 /api/v1/vendors/*
+app.include_router(barcodes_router, prefix="/api/v1", dependencies=[Depends(get_current_user)])   # 變成 /api/v1/barcodes/*
+app.include_router(vendors_router, prefix="/api/v1", dependencies=[Depends(get_current_user)])    # 變成 /api/v1/vendors/*
 
 app.add_middleware(
     CORSMiddleware,

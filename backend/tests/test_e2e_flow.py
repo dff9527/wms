@@ -30,6 +30,8 @@ from app.models.item import Item
 from app.models.vendor import Vendor, VendorItem
 from app.models.order import SalesOrder, SOLine, PickTask, PurchaseOrder, POLine
 from app.models.inventory import InventoryLot, InventoryTransaction
+from app.models.user import User
+from app.core.security import hash_password
 
 client = TestClient(app)
 
@@ -117,6 +119,9 @@ def seed_master_data():
          ).first():
             db.add(VendorItem(vendor_id=vendor.vendor_id, vendor_pn=VENDOR_PN,
                               internal_sku=SKU, approval_status="APPROVED"))
+        # Seed e2e-admin user for JWT authentication
+        if not db.query(User).filter(User.username == "e2e-admin").first():
+            db.add(User(username="e2e-admin", password_hash=hash_password("e2e-test-pw"), role="admin", is_active=True))
         db.commit()
 
         ts = datetime.now().strftime('%Y%m%d%H%M%S')
@@ -147,6 +152,16 @@ def main():
     cleanup_test_data()
     vendor_id, so_number, po_number = seed_master_data()
     print(f"  seeded item={SKU}, vendor_id={vendor_id}, so={so_number}, po={po_number}")
+
+    # Negative check: unauthenticated request should be rejected with 401
+    r_noauth = client.get("/api/v1/inventory/lots")
+    check("unauthenticated request rejected (401)", r_noauth.status_code == 401, r_noauth.status_code)
+
+    # Login with e2e-admin user
+    r = client.post("/api/v1/auth/login", json={"username": "e2e-admin", "password": "e2e-test-pw"})
+    check("login succeeds", r.status_code == 200, r.text[:200])
+    if r.status_code == 200:
+        client.headers.update({"Authorization": f"Bearer {r.json()['access_token']}"})
 
      # 1. Receive (scan + create lot)
     r = client.post("/api/v1/receiving/receive", json={
