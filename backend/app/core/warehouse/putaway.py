@@ -1,101 +1,97 @@
-from typing import Optional, List
+from typing import Optional, Dict, Tuple
 from sqlalchemy.orm import Session
-from sqlalchemy import func, desc, asc
+from sqlalchemy import func
 
 from app.models.inventory import InventoryLot    # type: ignore
-from app.models.storage import StorageLocation    # type: ignore
+from app.models.item import Item
+from app.models.warehouse import StorageLocation, Warehouse
 
 
 class PutAwayEngine:
+    """上架建議引擎 (Spec §6.2 多因子評分)
+
+    過濾(硬性條件):
+      1. 隔離區 (is_quarantine) 不收正常品
+      2. ESD:IC 類料件只能放 ESD 管控倉 (warehouses.is_esd_controlled)
+      3. MSL:儲位有 msl_level 上限時,料件等級不可超過
+      4. allowed_item_types 有設定時,料件類型必須在清單內
+    評分(軟性偏好):
+      - 同料號集中 (clustering)
+      - 儲位粒度:BIN > SHELF > RACK > AISLE > ZONE
+
+    註:schema 的 capacity_kg/capacity_cbm 為重量/體積容量,但料件主檔
+    沒有單件重量/體積資料,無法換算,容量檢核留待第二階段。
+    (舊版把 capacity_kg 直接和「件數」比較,單位錯誤,已移除。)
+    """
+
+    # 儲位粒度偏好分數
+    _TYPE_SCORE = {"BIN": 50, "SHELF": 40, "RACK": 30, "AISLE": 10, "ZONE": 0}
+
     def __init__(self, db: Session):
         self.db = db
 
     def suggest_location_id(self, lot: InventoryLot) -> Optional[int]:
-        """
-        Multi-factor scoring algorithm for putaway suggestion (Spec 6.2).
-        Factors:
-         1. Space Utilization (prefer locations with more free space)
-         2. Same-SKU Clustering (prefer locations already holding this SKU)
-         3. ABC Classification (A-items to prime real estate, B/C to secondary) - Simplified here
-         4. FIFO (prefer locations where older stock is picked first? Usually applies to picking, 
-           but for putaway, we might want to group by date code if strict FEFO is needed later).
-        
-        Returns location_id or None if no suitable location found.
-        """
+        item = (
+            self.db.query(Item)
+            .filter(Item.internal_sku == lot.internal_sku)
+            .first()
+        )
 
-        # 1. Get all available storage locations
-        # Assuming StorageLocation has 'capacity', 'current_quantity' (or similar), and 'zone_type'
-        # We need to calculate available capacity.
-
-        # storage_locations has no is_active column (schema §4.1); BIN-type locations
-        # are the placeable ones — keep it simple and consider all locations.
-        locations = self.db.query(StorageLocation).all()
-
-        if not locations:
+        rows = (
+            self.db.query(StorageLocation, Warehouse)
+            .outerjoin(Warehouse, StorageLocation.warehouse_id == Warehouse.warehouse_id)
+            .filter(StorageLocation.is_quarantine == False)  # noqa: E712
+            .all()
+        )
+        if not rows:
             return None
 
-        scored_locations = []
-
-        for loc in locations:
-            score = 0
-
-            # Factor 1: Space Utilization
-            # Calculate current occupancy in this location
-            current_qty = self.db.query(func.sum(InventoryLot.quantity_on_hand)).filter(
-                InventoryLot.location_id == loc.location_id,
-                InventoryLot.lot_status != "SHIPPED",
-                InventoryLot.lot_status != "EXPIRED"
-            ).scalar() or 0
-
-            # schema has capacity_kg / capacity_cbm (both nullable). When capacity is
-            # unspecified, treat the location as having room rather than excluding it.
-            capacity = loc.capacity_kg
-            if capacity is not None and (float(capacity) - current_qty) < lot.quantity_on_hand:
-                continue    # Cannot fit
-
-            # Higher free space relative to capacity is better? 
-            # Or just ensure it fits. Let's prioritize filling existing clusters first.
-
-            # Factor 2: Same-SKU Clustering
-            sku_count_in_loc = self.db.query(func.count(InventoryLot.lot_id)).filter(
-                InventoryLot.location_id == loc.location_id,
+        # 一次彙總同料號在各儲位的批次數(取代逐儲位 N+1 查詢)
+        sku_counts: Dict[int, int] = dict(
+            self.db.query(InventoryLot.location_id, func.count(InventoryLot.lot_id))
+            .filter(
                 InventoryLot.internal_sku == lot.internal_sku,
-                InventoryLot.lot_status.in_(["AVAILABLE", "RESERVED"])
-            ).scalar() or 0
+                InventoryLot.lot_status.in_(["AVAILABLE", "RESERVED"]),
+                InventoryLot.location_id.isnot(None),
+            )
+            .group_by(InventoryLot.location_id)
+            .all()
+        )
 
-            if sku_count_in_loc > 0:
-                score += 100 + (sku_count_in_loc * 10) # Strong preference for clustering
+        best_id, best_score = None, -1
+        for loc, wh in rows:
+            # ESD 管控:IC 必須進 ESD 倉
+            if item and item.item_type == "IC" and not (wh and wh.is_esd_controlled):
+                continue
+            # MSL 上限:儲位有限制時,料件 MSL 等級不可超過
+            if (
+                loc.msl_level is not None
+                and item and item.msl_level
+                and item.msl_level > loc.msl_level
+            ):
+                continue
+            # 料件類型白名單
+            if loc.allowed_item_types and item and item.item_type not in loc.allowed_item_types:
+                continue
 
-            # Factor 3: ABC Classification / Zone Preference
-            # Assuming 'A' items should go to 'FAST_PICK' zones, others to 'BULK'
-            # Simplified: If we had an item master table with ABC class, we'd join it.
-            # For now, assume all locations are equal regarding zone unless specified.
+            score = self._TYPE_SCORE.get(loc.location_type or "", 0)
+            cluster = sku_counts.get(loc.location_id, 0)
+            if cluster > 0:
+                score += 100 + cluster * 10  # 同料號集中優先
 
-            # Factor 4: FIFO/FEFO Consideration for Putaway
-            # Usually less relevant for putaway than picking, but we might want to avoid mixing dates excessively.
-            # We'll stick to SKU clustering as the primary driver after space check.
+            if score > best_score:
+                best_id, best_score = loc.location_id, score
 
-            scored_locations.append((loc, score))
-
-        if not scored_locations:
-            return None
-
-        # Sort by score descending
-        scored_locations.sort(key=lambda x: x[1], reverse=True)
-
-        best_location = scored_locations[0][0]
-        return best_location.location_id
+        return best_id
 
     def suggest_location(self, lot: InventoryLot) -> Optional[str]:
         suggested_id = self.suggest_location_id(lot)
         if suggested_id is None:
             return None
-        
-        location = self.db.query(StorageLocation).filter(
-            StorageLocation.location_id == suggested_id
-         ).first()
-        
-        if location is None:
-            return None
-            
-        return location.location_code
+
+        location = (
+            self.db.query(StorageLocation)
+            .filter(StorageLocation.location_id == suggested_id)
+            .first()
+        )
+        return location.location_code if location else None

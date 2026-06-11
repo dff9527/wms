@@ -28,8 +28,14 @@ def allocate(request: AllocateRequest, db: Session = Depends(get_db)):
         db.commit()
         return result
     except ValueError as e:
-        raise HTTPException(status_code=404, detail=str(e))
+        db.rollback()
+        msg = str(e)
+        if "not found" in msg:
+            raise HTTPException(status_code=404, detail=msg)
+        raise HTTPException(status_code=400, detail=msg)
     except InsufficientInventoryError as e:
+        # 全有全無:配不足時回滾,不留部分保留
+        db.rollback()
         raise HTTPException(status_code=400, detail=str(e))
 
 

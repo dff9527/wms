@@ -1,6 +1,6 @@
 import uuid
 import logging
-from datetime import datetime
+from datetime import datetime, timedelta
 from typing import Optional
 
 from fastapi import HTTPException, status
@@ -15,6 +15,11 @@ from app.schemas.receiving import ReceiveRequest, ReceiveResponse
 from app.core.barcode.parser import BarcodeParser
 
 logger = logging.getLogger(__name__)
+
+# MSL(濕敏等級)→ 密封包裝保存天數。
+# 依 J-STD-033:未拆封防潮袋(MBB)保存期 12 個月;拆封後的 floor life
+# 追蹤(168h/72h...)需要開封時間欄位,屬第二階段。MSL 1 不受濕敏管制。
+MSL_SEALED_SHELF_LIFE_DAYS = {2: 365, 3: 365, 4: 365, 5: 365, 6: 365}
 
 
 class ReceivingService:
@@ -108,6 +113,14 @@ class ReceivingService:
                 detail=f'找不到符合的採購單明細 (sku={internal_sku}, po={po_number})',
             )
 
+        # 2.5 MSL → 到期日(讓 FEFO 有依據)
+        from app.models.item import Item
+        item_row = self.db.query(Item).filter(Item.internal_sku == internal_sku).first()
+        expiry_date = None
+        if item_row and item_row.msl_level and item_row.msl_level in MSL_SEALED_SHELF_LIFE_DAYS:
+            expiry_date = (datetime.utcnow() + timedelta(
+                days=MSL_SEALED_SHELF_LIFE_DAYS[item_row.msl_level])).date()
+
         # 3. Generate Unique Identifiers
         internal_barcode = f"INT-{uuid.uuid4().hex[:12].upper()}"
         internal_lot_number = f"LOT-{datetime.now().strftime('%Y%m%d%H%M%S')}-{uuid.uuid4().hex[:6].upper()}"
@@ -132,6 +145,7 @@ class ReceivingService:
             quantity_on_hand=quantity,
             quantity_reserved=0,
             unit="PCS",
+            expiry_date=expiry_date,
             lot_status="QC_HOLD",
             iqc_result="PENDING",
             raw_scan_data=parsed_data,
@@ -241,6 +255,21 @@ class ReceivingService:
 
         now = datetime.utcnow()
 
+        # 強制換標:供應商要求 relabel 時,須先列印內部標籤才能 IQC PASS 上架
+        if result == "PASS":
+            from app.models.vendor import Vendor
+            vendor_row = (
+                self.db.query(Vendor).filter(Vendor.vendor_id == lot.vendor_id).first()
+                if lot.vendor_id else None
+            )
+            if vendor_row and vendor_row.requires_relabeling:
+                label_printed = (lot.raw_scan_data or {}).get("label_printed_at")
+                if not label_printed:
+                    raise HTTPException(
+                        status_code=status.HTTP_400_BAD_REQUEST,
+                        detail="此供應商要求強制換標:請先列印內部標籤(/print-label)再執行 IQC。",
+                    )
+
         # Update lot status based on result
         suggested_location_code = None
         if result == "PASS":
@@ -290,6 +319,16 @@ class ReceivingService:
             "status": lot.lot_status,
             "suggestedLocation": suggested_location_code,
         }
+
+    def mark_label_printed(self, lot_id: int) -> None:
+        """列印內部標籤後在 raw_scan_data 蓋時間戳,作為強制換標的依據。
+        (schema 無獨立欄位,暫存於 JSONB;正式欄位屬第二階段。)"""
+        lot = self.db.query(InventoryLot).filter(InventoryLot.lot_id == lot_id).first()
+        if not lot:
+            return
+        lot.raw_scan_data = {**(lot.raw_scan_data or {}), "label_printed_at": datetime.utcnow().isoformat()}
+        lot.updated_at = datetime.utcnow()
+        self.db.commit()
 
     # ── read helpers used by the receiving API (list / detail / scan) ──────────
     def scan_barcode(self, barcode: str, vendor_id: int):

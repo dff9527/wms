@@ -35,15 +35,28 @@ class BarcodeParser:
         if not patterns:
             return None
 
+        # 多段條碼 (multi_scan_mode, 如 ROHM):掃描器逐段送入時以換行分隔,
+        # 組合成單一字串後再套用 regex(ROHM 規則的分隔符為 '-')
+        joined = None
+        if "\n" in barcode:
+            segments = [s.strip() for s in barcode.splitlines() if s.strip()]
+            if len(segments) > 1:
+                joined = "-".join(segments)
+
         for pattern in patterns:
-            match = re.match(pattern.regex_rule, barcode)
-            if match:
-                parsed_data = self._extract_fields(match, pattern)
-                if self._validate(parsed_data, pattern):
-                    parsed_data = self._convert_quantity(parsed_data, pattern)
-                    parsed_data["pattern_used"] = pattern.pattern_name
-                    parsed_data["pattern_id"] = pattern.pattern_id
-                    return parsed_data
+            candidates = [barcode]
+            if joined and pattern.multi_scan_mode:
+                candidates.append(joined)
+
+            for candidate in candidates:
+                match = re.match(pattern.regex_rule, candidate)
+                if match:
+                    parsed_data = self._extract_fields(match, pattern)
+                    if self._validate(parsed_data, pattern):
+                        parsed_data = self._convert_quantity(parsed_data, pattern)
+                        parsed_data["pattern_used"] = pattern.pattern_name
+                        parsed_data["pattern_id"] = pattern.pattern_id
+                        return parsed_data
 
         return None
 

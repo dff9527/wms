@@ -191,7 +191,10 @@ def print_label(payload: Dict[str, Any], db: Session = Depends(get_db)):
 
     printer = LabelPrinter()
     zpl = printer.render(item)
-    
+
+    # 記錄已換標(強制換標流程的前置條件)
+    service.mark_label_printed(lot_id)
+
     printed = False
     
     if settings.ZEBRA_PRINTER_IP:

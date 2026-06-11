@@ -176,6 +176,15 @@ def main():
     check("receive returned lotId + internalBarcode", bool(lot_id and internal_barcode),
           f"lotId={lot_id}")
 
+     # 1.5 強制換標:TI requires_relabeling=TRUE,未列印標籤前 IQC PASS 必須被擋
+    r = client.post("/api/v1/receiving/iqc", json={
+         "lotId": lot_id, "result": "PASS", "inspector": "qc-e2e",
+     })
+    check("IQC PASS blocked before relabel (400)", r.status_code == 400, r.text[:120])
+
+    r = client.post("/api/v1/receiving/print-label", json={"lot_id": lot_id})
+    check("POST /receiving/print-label 200", r.status_code == 200, r.text[:120])
+
      # 2. IQC PASS -> lot becomes AVAILABLE
     r = client.post("/api/v1/receiving/iqc", json={
          "lotId": lot_id, "result": "PASS", "inspector": "qc-e2e",

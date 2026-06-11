@@ -25,6 +25,10 @@ class PickingEngine:
         if not so:
             raise ValueError(f"Sales Order {so_number} not found")
 
+        # 防重複配貨：只有 OPEN 狀態可配
+        if so.status != 'OPEN':
+            raise ValueError(f"Sales Order {so_number} 狀態為 {so.status},不可重複配貨")
+
         strategy = so.lot_selection_rule or 'FIFO'
         results = []
 
@@ -38,6 +42,15 @@ class PickingEngine:
         for line in lines:
             result = self._allocate_line(so, line, strategy)
             results.append(result)
+
+        # 全有全無：任一行配不足即整單失敗,由 API 層 rollback,不留部分保留
+        failed = [r for r in results if not r['success']]
+        if failed:
+            raise InsufficientInventoryError(
+                "; ".join(r['error'] for r in failed if r.get('error'))
+            )
+
+        so.status = 'ALLOCATED'
 
         total_allocated = sum(r['allocated_qty'] for r in results)
         
@@ -57,10 +70,16 @@ class PickingEngine:
         }
 
     def _allocate_line(self, so: SalesOrder, line: SOLine, strategy: str) -> Dict:
-        available_lots = self._get_available_lots(line.internal_sku)
+        available_lots = self._get_available_lots(
+            line.internal_sku,
+            customer_avl=so.customer_avl,
+            required_vendor=line.required_vendor_id,
+            required_date_code=line.required_date_code,
+        )
         sorted_lots = self._sort_by_strategy(available_lots, strategy)
 
-        remaining_needed = line.ordered_qty - (line.picked_qty or 0)
+        # 以已配數量為基準(picked_qty 是揀貨後才會動的欄位)
+        remaining_needed = line.ordered_qty - (line.allocated_qty or 0)
         allocated_qty = 0
         allocation_details = []
         tasks_created = 0
@@ -116,18 +135,36 @@ class PickingEngine:
             "error": None if success else f"Insufficient inventory for line {line.line_number}"
         }
 
-    def _get_available_lots(self, internal_sku: str) -> List[InventoryLot]:
+    def _get_available_lots(
+        self,
+        internal_sku: str,
+        customer_avl: Optional[dict] = None,
+        required_vendor: Optional[int] = None,
+        required_date_code: Optional[str] = None,
+    ) -> List[InventoryLot]:
         now = datetime.datetime.now().date()
-        
-        lots = (
+
+        query = (
             self.db.query(InventoryLot)
             .filter(
                 InventoryLot.internal_sku == internal_sku,
                 InventoryLot.lot_status == 'AVAILABLE',
                 InventoryLot.quantity_on_hand > 0
             )
-            .all()
         )
+
+        # 客戶 AVL:只允許客戶核可的供應商批次 (spec §6.3 過濾條件 1)
+        approved = (customer_avl or {}).get('approved_vendors')
+        if approved:
+            query = query.filter(InventoryLot.vendor_id.in_(approved))
+
+        # 行項層級的客戶指定供應商 / 日期碼
+        if required_vendor:
+            query = query.filter(InventoryLot.vendor_id == required_vendor)
+        if required_date_code:
+            query = query.filter(InventoryLot.vendor_date_code == required_date_code)
+
+        lots = query.all()
 
         # Filter out expired lots
         valid_lots = []
