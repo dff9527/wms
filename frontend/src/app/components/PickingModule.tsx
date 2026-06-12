@@ -1,6 +1,6 @@
 import { useState, useEffect } from 'react';
 import axios from 'axios';
-import { CheckCircle, Clock, ArrowRight, Package, MapPin, Calendar, Plus } from 'lucide-react';
+import { CheckCircle, Clock, ArrowRight, Package, MapPin, Calendar, Plus, Play, XCircle } from 'lucide-react';
 import type { FifoAllocationSummary, PickWaveTask } from '../types/wms-inventory';
 import AllocationResult from './picking/AllocationResult';
 
@@ -29,9 +29,18 @@ interface SalesOrderItem {
   strategy: string;
 }
 
+// Task extended with picking-specific states
+interface PickWaveTaskWithPicking extends PickWaveTask {
+  pickedQty: number; // The quantity picked by operator (can differ from pickQty)
+  confirmError?: string; // Error message for this task
+  isConfirming: boolean; // Loading state for confirmation
+  isConfirmed: boolean; // Whether this task is confirmed
+}
+
 export default function PickingModule() {
   const [allocation, setAllocation] = useState<FifoAllocationSummary | null>(null);
   const [pickWave, setPickWave] = useState<PickWaveTask[]>([]);
+  const [pickWaveWithPicking, setPickWaveWithPicking] = useState<PickWaveTaskWithPicking[]>([]);
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [selectedSo, setSelectedSo] = useState<string | null>(null);
@@ -53,6 +62,9 @@ export default function PickingModule() {
       }[] 
     }[] 
   } | null>(null);
+
+  // Picking mode state
+  const [isPickingMode, setIsPickingMode] = useState(false);
 
   const [salesOrders, setSalesOrders] = useState<SalesOrderItem[]>([]);
   
@@ -114,21 +126,28 @@ export default function PickingModule() {
          sequence: item.sequence ?? index + 1,
          taskId: item.task_id,
          location: item.location,
-        internalSku: item.internalSku,
-        internalLotNumber: item.internalLotNumber,
-        internalBarcode: item.internalBarcode,
-        vendorLotCode: item.vendorLotCode,
-        pickQty: item.pickQty,
-        receiveDate: item.receiveDate,
-        expiryDate: item.expiryDate,
-        status: item.status,
-        soNumber: item.soNumber
-       }));
-      setPickWave(tasks);
-     } catch (err) {
-      console.error('Failed to fetch pick wave', err);
-     }
-   };
+         internalSku: item.internalSku,
+         internalLotNumber: item.internalLotNumber,
+         internalBarcode: item.internalBarcode,
+         vendorLotCode: item.vendorLotCode,
+         pickQty: item.pickQty,
+         receiveDate: item.receiveDate,
+         expiryDate: item.expiryDate,
+         status: item.status,
+         soNumber: item.soNumber
+        }));
+       setPickWave(tasks);
+       // Reset picking mode when wave changes
+       setPickWaveWithPicking(tasks.map(task => ({
+         ...task,
+         pickedQty: task.pickQty,
+         isConfirming: false,
+         isConfirmed: String(task.status).toLowerCase() === 'picked'
+       })));
+      } catch (err) {
+       console.error('Failed to fetch pick wave', err);
+      }
+    };
 
   const handleConfirmShipment = async () => {
     if (!selectedSo) return;
@@ -155,34 +174,84 @@ export default function PickingModule() {
     }
   };
 
-  const handleConfirmAllocation = async () => {
-    if (!pickWave.length) return;
-    setConfirmLoading(true);
-    setConfirmError(null);
-    setConfirmSuccess(null);
+  // Handle individual task confirmation during picking mode
+  const handleConfirmTask = async (task: PickWaveTaskWithPicking) => {
+    if (task.isConfirming || task.isConfirmed) return;
+    
+    setPickWaveWithPicking(prev => prev.map(t => 
+      t.taskId === task.taskId ? { ...t, isConfirming: true } : t
+    ));
+    
     try {
-       // Confirm each pending task in the current wave
-       // Backend pick task status is PENDING. Normalize for comparison.
-      const pendingTasks = pickWave.filter(t => String(t.status).toLowerCase() === 'pending');
-      for (const task of pendingTasks) {
-        await axios.post('/api/v1/picking/confirm', {
-          task_id: task.taskId,
-          picked_qty: task.pickQty,
-          picker: 'operator'
-         });
-       }
-       
-       // After confirming picks, confirm shipment and then fetch packing list
-       await handleConfirmShipment();
-       
-       setConfirmSuccess('配貨已確認，揀貨任務已建立');
-       await fetchPickWave();
-     } catch (err: any) {
-      setConfirmError(err.response?.data?.detail || '確認配貨失敗');
-     } finally {
+      await axios.post('/api/v1/picking/confirm', {
+        task_id: task.taskId,
+        picked_qty: task.pickedQty,
+        picker: '' // Backend will use JWT user, empty string is acceptable
+      });
+      
+      // Mark task as confirmed
+      setPickWaveWithPicking(prev => prev.map(t => 
+        t.taskId === task.taskId ? { 
+          ...t, 
+          isConfirming: false,
+          isConfirmed: true
+        } : t
+      ));
+      
+      // Refresh wave to update status
+      await fetchPickWave();
+    } catch (err: any) {
+      const errorMessage = err.response?.data?.detail || '確認失敗';
+      setPickWaveWithPicking(prev => prev.map(t => 
+        t.taskId === task.taskId ? { 
+          ...t, 
+          isConfirming: false,
+          confirmError: errorMessage
+        } : t
+      ));
+    }
+  };
+
+  // Cancel error for a task
+  const handleCancelError = (taskId: number) => {
+    setPickWaveWithPicking(prev => prev.map(t => 
+      t.taskId === taskId ? { ...t, confirmError: undefined } : t
+    ));
+  };
+
+  // Calculate summary stats for picking mode
+  const totalTasks = pickWaveWithPicking.length;
+  const confirmedTasks = pickWaveWithPicking.filter(t => t.isConfirmed).length;
+  const pendingTasks = pickWaveWithPicking.filter(t => !t.isConfirmed).length;
+  const canConfirmShipment = pendingTasks === 0 && totalTasks > 0;
+
+  const handleConfirmAllocation = async () => {
+    // Simply refresh the wave when clicking "Confirm Allocation" (now used as refresh)
+    setConfirmLoading(true);
+    try {
+      await fetchPickWave();
+      setConfirmSuccess('波次已重新整理');
+    } catch (err: any) {
+      setConfirmError(err.response?.data?.detail || '刷新波次失敗');
+    } finally {
       setConfirmLoading(false);
-     }
-   };
+    }
+  };
+
+  const togglePickingMode = () => {
+    setIsPickingMode(!isPickingMode);
+    // Reset picking errors when exiting picking mode
+    if (!isPickingMode) {
+      setPickWaveWithPicking(prev => prev.map(t => ({ ...t, confirmError: undefined })));
+    }
+  };
+
+  const handlePickedQtyChange = (taskId: number, value: string) => {
+    const numValue = parseFloat(value);
+    setPickWaveWithPicking(prev => prev.map(t => 
+      t.taskId === taskId ? { ...t, pickedQty: isNaN(numValue) ? 0 : numValue } : t
+    ));
+  };
 
   useEffect(() => {
     fetchSalesOrders();
@@ -301,7 +370,113 @@ export default function PickingModule() {
          {config.label}
        </span>
      );
-   };
+  };
+
+  // In picking mode, show tasks with input and confirm button
+  const renderPickingTask = (task: PickWaveTaskWithPicking) => (
+    <tr key={task.sequence} className={`border-b border-slate-100 ${task.isConfirmed ? 'bg-green-50/50' : 'bg-white'}`}>
+      <td className="py-3 px-3">
+        <span className={`inline-flex items-center justify-center size-7 rounded-full font-bold text-sm ${task.isConfirmed ? 'bg-green-100 text-green-700' : 'bg-blue-100 text-blue-700'}`}>
+          {task.sequence}
+        </span>
+      </td>
+      <td className="py-3 px-3">
+        <div className="flex items-center gap-2">
+          <MapPin className="size-4 text-blue-600 shrink-0" />
+          <span className="text-sm font-mono font-semibold text-blue-600">{task.location ?? '—'}</span>
+        </div>
+      </td>
+      <td className="py-3 px-3 text-sm font-mono text-slate-900 whitespace-nowrap">{task.internalSku}</td>
+      <td className="py-3 px-3 text-sm font-mono text-slate-900 whitespace-nowrap">{task.internalLotNumber}</td>
+      <td className="py-3 px-3 text-sm font-mono text-slate-800 whitespace-nowrap">{task.internalBarcode}</td>
+      <td className="py-3 px-3 text-sm font-mono text-slate-700 whitespace-nowrap">{task.vendorLotCode}</td>
+      <td className="py-3 px-3">
+        <div className="flex items-center gap-2">
+          <input
+            type="number"
+            min="0"
+            value={task.pickedQty}
+            onChange={(e) => handlePickedQtyChange(task.taskId, e.target.value)}
+            disabled={task.isConfirmed || task.isConfirming}
+            className="w-20 px-2 py-1 border border-slate-300 rounded-lg text-sm text-right focus:ring-2 focus:ring-blue-500 focus:border-blue-500 outline-none transition-all disabled:opacity-50 disabled:cursor-not-allowed"
+          />
+          <span className="text-xs text-slate-500">/ {task.pickQty.toLocaleString()}</span>
+        </div>
+      </td>
+      <td className="py-3 px-3">
+        <div className="flex items-center gap-1 text-sm text-slate-700 whitespace-nowrap">
+          <Calendar className="size-3 text-slate-500 shrink-0" />
+          {task.receiveDate}
+        </div>
+      </td>
+      <td className="py-3 px-3">
+        <div className="flex items-center justify-center gap-2">
+          {task.isConfirmed ? (
+            <span className="inline-flex items-center gap-1 px-2 py-1 rounded text-xs font-medium bg-green-100 text-green-700">
+              <CheckCircle className="size-3" />
+              已確認
+            </span>
+          ) : (
+            <>
+              {getStatusBadge(task.status)}
+              <button
+                type="button"
+                onClick={() => handleConfirmTask(task)}
+                disabled={task.isConfirming}
+                className="px-2 py-1 bg-blue-600 text-white rounded-lg text-xs hover:bg-blue-700 transition-colors disabled:opacity-50 disabled:cursor-not-allowed flex items-center gap-1"
+              >
+                {task.isConfirming ? '確認中...' : '確認'}
+              </button>
+            </>
+          )}
+        </div>
+        {task.confirmError && (
+          <div className="mt-2 flex items-start gap-2">
+            <XCircle className="size-4 text-red-500 shrink-0 mt-0.5" />
+            <div className="flex-1 text-xs text-red-700 bg-red-50 p-2 rounded border border-red-200">
+              <span className="font-semibold">錯誤: </span>{task.confirmError}
+            </div>
+            <button
+              type="button"
+              onClick={() => handleCancelError(task.taskId)}
+              className="text-red-400 hover:text-red-600"
+            >
+              <span className="text-lg">&times;</span>
+            </button>
+          </div>
+        )}
+      </td>
+    </tr>
+  );
+
+  // In regular mode (not picking), show tasks as read-only
+  const renderReadOnlyTask = (task: PickWaveTask) => (
+    <tr key={task.sequence} className="border-b border-slate-100 hover:bg-slate-50">
+      <td className="py-3 px-3">
+        <span className="inline-flex items-center justify-center size-7 bg-blue-100 text-blue-700 rounded-full font-bold text-sm">
+          {task.sequence}
+        </span>
+      </td>
+      <td className="py-3 px-3">
+        <div className="flex items-center gap-2">
+          <MapPin className="size-4 text-blue-600 shrink-0" />
+          <span className="text-sm font-mono font-semibold text-blue-600">{task.location ?? '—'}</span>
+        </div>
+      </td>
+      <td className="py-3 px-3 text-sm font-mono text-slate-900 whitespace-nowrap">{task.internalSku}</td>
+      <td className="py-3 px-3 text-sm font-mono text-slate-900 whitespace-nowrap">{task.internalLotNumber}</td>
+      <td className="py-3 px-3 text-sm font-mono text-slate-800 whitespace-nowrap">{task.internalBarcode}</td>
+      <td className="py-3 px-3 text-sm font-mono text-slate-700 whitespace-nowrap">{task.vendorLotCode}</td>
+      <td className="py-3 px-3 text-sm text-right font-semibold text-slate-900">{task.pickQty.toLocaleString()} PCS</td>
+      <td className="py-3 px-3">
+        <div className="flex items-center gap-1 text-sm text-slate-700 whitespace-nowrap">
+          <Calendar className="size-3 text-slate-500 shrink-0" />
+          {task.receiveDate}
+        </div>
+      </td>
+      <td className="py-3 px-3 text-center">{getStatusBadge(task.status)}</td>
+    </tr>
+  );
 
   return (
      <div className="p-6 space-y-6">
@@ -407,10 +582,10 @@ export default function PickingModule() {
                  <button
                   type="button"
                   onClick={handleConfirmAllocation}
-                  disabled={confirmLoading || !pickWave.length}
-                  className="px-4 py-2 bg-green-600 text-white rounded-lg hover:bg-green-700 transition-colors disabled:opacity-50"
+                  disabled={confirmLoading}
+                  className="px-4 py-2 bg-slate-600 text-white rounded-lg hover:bg-slate-700 transition-colors disabled:opacity-50"
                  >
-                   {confirmLoading ? '確認中...' : '確認配貨'}
+                   {confirmLoading ? '刷新中...' : '刷新波次'}
                  </button>
                </div>
                {confirmSuccess && (
@@ -438,66 +613,86 @@ export default function PickingModule() {
              <button type="button" className="px-4 py-2 bg-slate-100 text-slate-700 rounded-lg hover:bg-slate-200 transition-colors">
               列印揀貨單
              </button>
-             <button type="button" className="px-4 py-2 bg-blue-600 text-white rounded-lg hover:bg-blue-700 transition-colors">
-              開始揀貨
-             </button>
+             {isPickingMode ? (
+               <button 
+                type="button" 
+                onClick={togglePickingMode}
+                className="flex items-center gap-2 px-4 py-2 bg-amber-500 text-white rounded-lg hover:bg-amber-600 transition-colors"
+               >
+                 <XCircle className="size-4" />
+                 離開揀貨模式
+               </button>
+             ) : (
+               <button 
+                type="button" 
+                onClick={togglePickingMode}
+                disabled={pickWave.length === 0 || pickWave.every(t => String(t.status).toLowerCase() !== 'allocated')}
+                className="flex items-center gap-2 px-4 py-2 bg-blue-600 text-white rounded-lg hover:bg-blue-700 transition-colors disabled:opacity-50 disabled:cursor-not-allowed"
+               >
+                 <Play className="size-4" />
+                 開始揀貨
+               </button>
+             )}
            </div>
          </div>
 
-         <div className="overflow-x-auto">
-           <table className="w-full min-w-[1320px]">
-             <thead className="bg-slate-50">
-               <tr className="border-b border-slate-200">
-                 <th className="text-left py-3 px-3 text-sm font-medium text-slate-600 whitespace-nowrap">序號</th>
-                 <th className="text-left py-3 px-3 text-sm font-medium text-slate-600 whitespace-nowrap">儲位</th>
-                 <th className="text-left py-3 px-3 text-sm font-medium text-slate-600 whitespace-nowrap">料號</th>
-                 <th className="text-left py-3 px-3 text-sm font-medium text-slate-600 whitespace-nowrap">內部批號</th>
-                 <th className="text-left py-3 px-3 text-sm font-medium text-slate-600 whitespace-nowrap">內部條碼</th>
-                 <th className="text-left py-3 px-3 text-sm font-medium text-slate-600 whitespace-nowrap">供應商批號</th>
-                 <th className="text-right py-3 px-3 text-sm font-medium text-slate-600 whitespace-nowrap">揀貨量</th>
-                 <th className="text-left py-3 px-3 text-sm font-medium text-slate-600 whitespace-nowrap">收貨日期</th>
-                 <th className="text-center py-3 px-3 text-sm font-medium text-slate-600 whitespace-nowrap">狀態</th>
-               </tr>
-             </thead>
-             <tbody>
-               {pickWave.length === 0 ? (
-                 <tr>
-                   <td colSpan={9} className="py-8 text-center text-slate-500">
-                    無揀貨任務，請先執行配貨
-                   </td>
-                 </tr>
-               ) : (
-                pickWave.map((task) => (
-                   <tr key={task.sequence} className="border-b border-slate-100 hover:bg-slate-50">
-                     <td className="py-3 px-3">
-                       <span className="inline-flex items-center justify-center size-7 bg-blue-100 text-blue-700 rounded-full font-bold text-sm">
-                         {task.sequence}
-                       </span>
-                     </td>
-                     <td className="py-3 px-3">
-                       <div className="flex items-center gap-2">
-                         <MapPin className="size-4 text-blue-600 shrink-0" />
-                         <span className="text-sm font-mono font-semibold text-blue-600">{task.location ?? '—'}</span>
-                       </div>
-                     </td>
-                     <td className="py-3 px-3 text-sm font-mono text-slate-900 whitespace-nowrap">{task.internalSku}</td>
-                     <td className="py-3 px-3 text-sm font-mono text-slate-900 whitespace-nowrap">{task.internalLotNumber}</td>
-                     <td className="py-3 px-3 text-sm font-mono text-slate-800 whitespace-nowrap">{task.internalBarcode}</td>
-                     <td className="py-3 px-3 text-sm font-mono text-slate-700 whitespace-nowrap">{task.vendorLotCode}</td>
-                     <td className="py-3 px-3 text-sm text-right font-semibold text-slate-900">{task.pickQty.toLocaleString()} PCS</td>
-                     <td className="py-3 px-3">
-                       <div className="flex items-center gap-1 text-sm text-slate-700 whitespace-nowrap">
-                         <Calendar className="size-3 text-slate-500 shrink-0" />
-                         {task.receiveDate}
-                       </div>
-                     </td>
-                     <td className="py-3 px-3 text-center">{getStatusBadge(task.status)}</td>
+         {pickWave.length === 0 ? (
+           <div className="bg-slate-50 rounded-lg p-8 text-center text-slate-500">
+             無揀貨任務，請先執行配貨
+           </div>
+         ) : (
+           <>
+             <div className="mb-4 p-3 bg-blue-50 rounded-lg border border-blue-200 text-sm">
+               <div className="flex items-center justify-between">
+                 <div className="flex items-center gap-4">
+                   <span className="text-slate-700">
+                     <span className="font-semibold">總任務數:</span> {totalTasks}
+                   </span>
+                   <span className="text-green-700">
+                     <span className="font-semibold">已完成:</span> {confirmedTasks}
+                   </span>
+                   <span className="text-orange-700">
+                     <span className="font-semibold">待完成:</span> {pendingTasks}
+                   </span>
+                 </div>
+                 {isPickingMode && canConfirmShipment && (
+                   <button
+                    type="button"
+                    onClick={handleConfirmShipment}
+                    disabled={confirmLoading}
+                    className="px-4 py-2 bg-green-600 text-white rounded-lg hover:bg-green-700 transition-colors disabled:opacity-50 flex items-center gap-2 font-semibold text-lg"
+                   >
+                     <CheckCircle className="size-5" />
+                     確認出貨
+                   </button>
+                 )}
+               </div>
+             </div>
+
+             <div className="overflow-x-auto">
+               <table className="w-full min-w-[1320px]">
+                 <thead className="bg-slate-50">
+                   <tr className="border-b border-slate-200">
+                     <th className="text-left py-3 px-3 text-sm font-medium text-slate-600 whitespace-nowrap">序號</th>
+                     <th className="text-left py-3 px-3 text-sm font-medium text-slate-600 whitespace-nowrap">儲位</th>
+                     <th className="text-left py-3 px-3 text-sm font-medium text-slate-600 whitespace-nowrap">料號</th>
+                     <th className="text-left py-3 px-3 text-sm font-medium text-slate-600 whitespace-nowrap">內部批號</th>
+                     <th className="text-left py-3 px-3 text-sm font-medium text-slate-600 whitespace-nowrap">內部條碼</th>
+                     <th className="text-left py-3 px-3 text-sm font-medium text-slate-600 whitespace-nowrap">供應商批號</th>
+                     <th className="text-right py-3 px-3 text-sm font-medium text-slate-600 whitespace-nowrap">揀貨量</th>
+                     <th className="text-left py-3 px-3 text-sm font-medium text-slate-600 whitespace-nowrap">收貨日期</th>
+                     <th className="text-center py-3 px-3 text-sm font-medium text-slate-600 whitespace-nowrap">狀態</th>
                    </tr>
-                 ))
-               )}
-             </tbody>
-           </table>
-         </div>
+                 </thead>
+                 <tbody>
+                   {pickWaveWithPicking.map((task) => 
+                     isPickingMode ? renderPickingTask(task) : renderReadOnlyTask(task)
+                   )}
+                 </tbody>
+               </table>
+             </div>
+           </>
+         )}
 
          <div className="mt-4 p-4 bg-blue-50 rounded-lg border border-blue-200">
            <div className="flex items-start gap-3">
@@ -533,7 +728,7 @@ export default function PickingModule() {
                      <tr className="border-b border-slate-200">
                        <th className="text-left py-2 px-3 text-xs font-medium text-slate-600 whitespace-nowrap">內部批號</th>
                        <th className="text-left py-2 px-3 text-xs font-medium text-slate-600 whitespace-nowrap">料號</th>
-                       <th className="text-right py-2 px-3 text-xs font-medium text-slate-600 whitespace-nowrap">數量</th>
+                       <th className="right py-2 px-3 text-xs font-medium text-slate-600 whitespace-nowrap">數量</th>
                        <th className="text-left py-2 px-3 text-xs font-medium text-slate-600 whitespace-nowrap">收貨日期</th>
                        <th className="text-left py-2 px-3 text-xs font-medium text-slate-600 whitespace-nowrap">儲位</th>
                      </tr>
