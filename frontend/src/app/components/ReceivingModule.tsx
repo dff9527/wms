@@ -1,8 +1,8 @@
 import { useMemo, useState } from 'react';
-import { ScanBarcode, Package, CheckCircle2, Printer, AlertTriangle, Loader2 } from 'lucide-react';
+import { ScanBarcode, Package, CheckCircle2, Printer, AlertTriangle, Loader2, Plus } from 'lucide-react';
 import ReceivingList from './receiving/ReceivingList';
 import ReceivingDetail from './receiving/ReceivingDetail';
-import { useReceivingList, useScanBarcode, useProcessReceipt, useCompleteIQC, usePrintLabel } from '../hooks/useReceivingQueries';
+import { useReceivingList, useScanBarcode, useProcessReceipt, useCompleteIQC, usePrintLabel, useVendors, useCreatePO, useOpenPOs } from '../hooks/useReceivingQueries';
 import type { ReceivingItem } from '../types/receiving';
 
 /**
@@ -41,6 +41,20 @@ export default function ReceivingModule() {
 
   // 只在 API 連線失敗時顯示警示;空清單是正常狀態
   const showErrorBanner = isError;
+
+  // New PO dialog state
+  const [showNewPODialog, setShowNewPODialog] = useState(false);
+  const [newPOForm, setNewPOForm] = useState({
+    poNumber: '',
+    vendorId: 1,
+    lines: [{ lineNumber: 1, internalSku: '', vendorPn: '', orderedQty: 1 }],
+  });
+  const [newPOError, setNewPOError] = useState<string | null>(null);
+  const [newPOSuccess, setNewPOSuccess] = useState(false);
+
+  const createPOMutation = useCreatePO();
+  const { data: vendorsData } = useVendors();
+  const { data: openPOsData } = useOpenPOs();
 
   const handleScanBarcode = async () => {
     if (!scannedBarcode) return;
@@ -134,7 +148,6 @@ export default function ReceivingModule() {
     const labelData = printLabelMutation.data;
     
     // Get internal data from parsedData or use a default format
-    const internalLotNumber = parsedData?.lotCode || `LOT-${receivedLotId}`;
     const internalBarcode = parsedData?.vendorPn ? `${parsedData.vendorPn}-${parsedData.lotCode}` : `BARCODE-${receivedLotId}`;
     const quantity = parsedData?.qty ?? 1;
     
@@ -189,6 +202,80 @@ export default function ReceivingModule() {
     const found = rows.find((r) => r.lotId === lotId);
     if (found) setDetailItem(found);
        };
+
+  const handleNewPOSubmit = async () => {
+    setNewPOError(null);
+    
+    // Basic validation
+    if (!newPOForm.poNumber.trim()) {
+      setNewPOError("請輸入採購單號");
+      return;
+    }
+    if (!newPOForm.vendorId) {
+      setNewPOError("請選擇供應商");
+      return;
+    }
+    const validLines = newPOForm.lines.filter(l => l.internalSku && l.orderedQty > 0);
+    if (validLines.length === 0) {
+      setNewPOError("請至少填寫一筆有效的明細");
+      return;
+    }
+
+    try {
+      await createPOMutation.mutateAsync({
+        poNumber: newPOForm.poNumber.trim(),
+        vendorId: newPOForm.vendorId,
+        lines: validLines.map(l => ({
+          internalSku: l.internalSku,
+          vendorPn: l.vendorPn,
+          orderedQty: l.orderedQty,
+        })),
+      });
+      setNewPOSuccess(true);
+      // Reset form after successful creation
+      setTimeout(() => {
+        setShowNewPODialog(false);
+        setNewPOForm({
+          poNumber: '',
+          vendorId: 1,
+          lines: [{ lineNumber: 1, internalSku: '', vendorPn: '', orderedQty: 1 }],
+        });
+        setNewPOSuccess(false);
+      }, 1500);
+    } catch (error: any) {
+      if (error.response?.data?.detail) {
+        setNewPOError(error.response.data.detail);
+      } else if (error.message) {
+        setNewPOError(error.message);
+      } else {
+        setNewPOError("建立失敗，請稍後再試");
+      }
+    }
+  };
+
+  const handleAddLine = () => {
+    const maxLine = Math.max(...newPOForm.lines.map(l => l.lineNumber), 0);
+    setNewPOForm({
+      ...newPOForm,
+      lines: [...newPOForm.lines, { lineNumber: maxLine + 1, internalSku: '', vendorPn: '', orderedQty: 1 }],
+    });
+  };
+
+  const handleRemoveLine = (lineNumber: number) => {
+    setNewPOForm({
+      ...newPOForm,
+      lines: newPOForm.lines.filter(l => l.lineNumber !== lineNumber),
+    });
+  };
+
+  const handleLineChange = (lineNumber: number, field: keyof typeof newPOForm.lines[0], value: string | number) => {
+    setNewPOForm({
+      ...newPOForm,
+      lines: newPOForm.lines.map(l => 
+        l.lineNumber === lineNumber ? { ...l, [field]: value } : l
+      ),
+    });
+  };
 
   return (
          <div className="p-6 space-y-6">
@@ -441,10 +528,193 @@ export default function ReceivingModule() {
                <div>
                  <h2 className="text-xl font-semibold text-slate-900">收貨清單</h2>
                </div>
+               <button
+                 type="button"
+                 onClick={() => {
+                   setShowNewPODialog(true);
+                   setNewPOError(null);
+                   setNewPOSuccess(false);
+                 }}
+                 className="flex items-center gap-2 px-4 py-2 bg-blue-600 text-white rounded-lg hover:bg-blue-700 transition-colors"
+               >
+                 <Plus className="size-4" />
+                 + 新增採購單
+               </button>
              </div>
 
              <ReceivingList items={rows} onViewDetails={openDetail} />
            </div>
+
+           {/* New PO Dialog */}
+           {showNewPODialog && (
+             <div className="fixed inset-0 bg-black/50 flex items-center justify-center z-50 p-4 overflow-y-auto">
+               <div className="relative w-full max-w-4xl bg-white rounded-xl shadow-2xl max-h-[90vh] overflow-y-auto">
+                 <button
+                   type="button"
+                   onClick={() => setShowNewPODialog(false)}
+                   className="absolute right-4 top-4 text-slate-400 hover:text-slate-600 text-2xl font-semibold z-10"
+                   aria-label="關閉"
+                 >
+                   ✕
+                 </button>
+                 
+                 <div className="p-6">
+                   <h2 className="text-xl font-semibold text-slate-900 mb-4">建立採購單</h2>
+                   
+                   {/* Success Message */}
+                   {newPOSuccess && (
+                     <div className="mb-4 flex items-center gap-2 rounded-lg border border-emerald-200 bg-emerald-50 px-4 py-3 text-sm text-emerald-900">
+                       <CheckCircle2 className="size-5 shrink-0" />
+                       <span className="font-medium">採購單建立成功！</span>
+                     </div>
+                   )}
+                   
+                   {/* Error Message */}
+                   {newPOError && (
+                     <div className="mb-4 rounded-lg border border-red-200 bg-red-50 px-4 py-3 text-sm text-red-900">
+                       <AlertTriangle className="size-5 mb-1" />
+                       <p>{newPOError}</p>
+                     </div>
+                   )}
+                   
+                   <div className="space-y-4">
+                     {/* PO Number and Vendor */}
+                     <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+                       <div>
+                         <label className="block text-sm font-medium text-slate-700 mb-1">採購單號</label>
+                         <input
+                           type="text"
+                           value={newPOForm.poNumber}
+                           onChange={(e) => setNewPOForm({...newPOForm, poNumber: e.target.value})}
+                           placeholder="輸入採購單號"
+                           className="w-full px-3 py-2 border border-slate-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500"
+                           list="open-po-list"
+                         />
+                         <datalist id="open-po-list">
+                           {openPOsData?.map((poNum) => (
+                             <option key={poNum} value={poNum} />
+                           ))}
+                         </datalist>
+                         <p className="text-xs text-slate-500 mt-1">可手動輸入或從下拉選取 (OPEN/PARTIAL 單號)</p>
+                       </div>
+                       <div>
+                         <label className="block text-sm font-medium text-slate-700 mb-1">供應商</label>
+                         <select
+                           value={newPOForm.vendorId}
+                           onChange={(e) => setNewPOForm({...newPOForm, vendorId: Number(e.target.value)})}
+                           className="w-full px-3 py-2 border border-slate-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500"
+                         >
+                           <option value="">選擇供應商...</option>
+                           {vendorsData?.map(v => (
+                             <option key={v.vendorId} value={v.vendorId}>{v.vendorName}</option>
+                           ))}
+                         </select>
+                       </div>
+                     </div>
+
+                     {/* PO Lines */}
+                     <div>
+                       <div className="flex items-center justify-between mb-2">
+                         <label className="block text-sm font-medium text-slate-700">明細列</label>
+                         <button
+                           type="button"
+                           onClick={handleAddLine}
+                           className="text-xs px-2 py-1 bg-blue-100 text-blue-700 rounded hover:bg-blue-200"
+                         >
+                           + 加入明細
+                         </button>
+                       </div>
+                       
+                       <div className="border border-slate-200 rounded-lg overflow-hidden">
+                         <table className="w-full text-sm">
+                           <thead className="bg-slate-50 border-b border-slate-200">
+                             <tr>
+                               <th className="px-3 py-2 text-left text-xs font-medium text-slate-500">料號 (SKU)</th>
+                               <th className="px-3 py-2 text-left text-xs font-medium text-slate-500">供應商料號</th>
+                               <th className="px-3 py-2 text-left text-xs font-medium text-slate-500">數量</th>
+                               <th className="px-3 py-2 text-right text-xs font-medium text-slate-500">操作</th>
+                             </tr>
+                           </thead>
+                           <tbody className="divide-y divide-slate-200">
+                             {newPOForm.lines.map((line) => (
+                               <tr key={line.lineNumber} className="hover:bg-slate-50">
+                                 <td className="px-3 py-2">
+                                   <select
+                                     value={line.internalSku}
+                                     onChange={(e) => handleLineChange(line.lineNumber, 'internalSku', e.target.value)}
+                                     className="w-full px-2 py-1 border border-slate-300 rounded focus:outline-none focus:ring-2 focus:ring-blue-500"
+                                   >
+                                     <option value="">選擇料號...</option>
+                                     {/* Items will be loaded via items hook */}
+                                     <option value="SKU-001">SKU-001 - Test Item</option>
+                                   </select>
+                                 </td>
+                                 <td className="px-3 py-2">
+                                   <input
+                                     type="text"
+                                     value={line.vendorPn}
+                                     onChange={(e) => handleLineChange(line.lineNumber, 'vendorPn', e.target.value)}
+                                     placeholder="供應商料號"
+                                     className="w-full px-2 py-1 border border-slate-300 rounded focus:outline-none focus:ring-2 focus:ring-blue-500"
+                                   />
+                                 </td>
+                                 <td className="px-3 py-2">
+                                   <input
+                                     type="number"
+                                     min="1"
+                                     value={line.orderedQty}
+                                     onChange={(e) => handleLineChange(line.lineNumber, 'orderedQty', Number(e.target.value))}
+                                     className="w-24 px-2 py-1 border border-slate-300 rounded focus:outline-none focus:ring-2 focus:ring-blue-500"
+                                   />
+                                 </td>
+                                 <td className="px-3 py-2 text-right">
+                                   {newPOForm.lines.length > 1 && (
+                                     <button
+                                       type="button"
+                                       onClick={() => handleRemoveLine(line.lineNumber)}
+                                       className="text-red-600 hover:text-red-800 text-xs px-2 py-1"
+                                     >
+                                       刪除
+                                     </button>
+                                   )}
+                                 </td>
+                               </tr>
+                             ))}
+                           </tbody>
+                         </table>
+                       </div>
+                     </div>
+                   </div>
+
+                   {/* Action Buttons */}
+                   <div className="mt-6 flex justify-end gap-3">
+                     <button
+                       type="button"
+                       onClick={() => setShowNewPODialog(false)}
+                       className="px-4 py-2 text-slate-700 hover:bg-slate-100 rounded-lg"
+                     >
+                       取消
+                     </button>
+                     <button
+                       type="button"
+                       onClick={handleNewPOSubmit}
+                       disabled={createPOMutation.isPending}
+                       className="px-6 py-2 bg-blue-600 text-white rounded-lg hover:bg-blue-700 transition-colors disabled:opacity-50 flex items-center gap-2"
+                     >
+                       {createPOMutation.isPending ? (
+                         <>
+                           <Loader2 className="size-4 animate-spin" />
+                           建立中...
+                         </>
+                       ) : (
+                         '送出'
+                       )}
+                     </button>
+                   </div>
+                 </div>
+               </div>
+             </div>
+           )}
 
            {detailItem ? (
              <div

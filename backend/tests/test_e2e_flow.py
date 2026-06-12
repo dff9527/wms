@@ -513,7 +513,89 @@ def main():
     
     # --- NEW TEST STEPS END HERE ---
 
-    # Step 14: Change own password (自助改密碼)
+    # Step 14: Purchase Order API Test
+    print("\n--- Step 14: Purchase Order API Test ---")
+    
+    ts = datetime.now().strftime("%Y%m%d%H%M%S")
+    test_po_number = f"PO-E2E-API-{ts}"
+    
+    # Get vendors first
+    response = client.get("/api/v1/vendors")
+    assert response.status_code == 200
+    vendors = response.json()
+    test_vendor_id = vendors[0]["vendor_id"] if vendors else 1
+    
+    # Get items to ensure we have valid SKUs
+    response = client.get("/api/v1/purchase-orders/items")
+    assert response.status_code == 200
+    items = response.json()
+    test_sku = items[0]["internalSku"] if items else SKU
+    
+    # Test 1: Create new PO successfully
+    response = client.post(
+        "/api/v1/purchase-orders",
+        json={
+            "poNumber": test_po_number,
+            "vendorId": test_vendor_id,
+            "lines": [{"internalSku": test_sku, "vendorPn": "TEST-PN-E2E", "orderedQty": 50}],
+        },
+    )
+    check("POST /purchase-orders create 201", response.status_code == 201, f"status={response.status_code}")
+    if response.status_code == 201:
+        po_data = response.json()
+        check("PO has correct poNumber", po_data.get("poNumber") == test_po_number, po_data.get("poNumber"))
+        check("PO status is OPEN", po_data.get("status") == "OPEN", po_data.get("status"))
+        check("PO has lines", len(po_data.get("lines", [])) > 0, len(po_data.get("lines", [])))
+    
+    # Test 2: Duplicate PO number should return 409
+    response = client.post(
+        "/api/v1/purchase-orders",
+        json={
+            "poNumber": test_po_number,
+            "vendorId": test_vendor_id,
+            "lines": [{"internalSku": test_sku, "vendorPn": "TEST-PN-DUP", "orderedQty": 30}],
+        },
+    )
+    check("POST /purchase-orders duplicate returns 409", response.status_code == 409, f"status={response.status_code}")
+    
+    # Test 3: Invalid vendor_id should return 400
+    response = client.post(
+        "/api/v1/purchase-orders",
+        json={
+            "poNumber": "PO-INVALID-VENDOR",
+            "vendorId": 99999,
+            "lines": [{"internalSku": test_sku, "vendorPn": "TEST-PN-INV", "orderedQty": 30}],
+        },
+    )
+    check("POST /purchase-orders invalid vendor returns 400", response.status_code == 400, f"status={response.status_code}")
+    
+    # Test 4: Invalid SKU should return 400
+    response = client.post(
+        "/api/v1/purchase-orders",
+        json={
+            "poNumber": "PO-INVALID-SKU",
+            "vendorId": test_vendor_id,
+            "lines": [{"internalSku": "SKU-NOT-EXIST", "vendorPn": "TEST-PN-INV", "orderedQty": 30}],
+        },
+    )
+    check("POST /purchase-orders invalid SKU returns 400", response.status_code == 400, f"status={response.status_code}")
+    
+    # Test 5: Receive against the created PO
+    # First, scan a barcode to get parsed data
+    response = client.post("/api/v1/receiving/scan", json={"barcode": TI_BARCODE, "vendor_id": test_vendor_id})
+    check("POST /receiving/scan 200", response.status_code == 200, f"status={response.status_code}")
+    
+    if response.status_code == 200 and response.json().get("success"):
+        scan_result = response.json()["parsed"]
+        response = client.post("/api/v1/receiving/receive", json={
+            "po_number": test_po_number,
+            "barcode": scan_result["vendorPn"] + scan_result["lotCode"],
+            "vendor_id": test_vendor_id,
+            "qty": scan_result.get("qty", 100),
+        })
+        check("POST /receiving/receive using new PO 200", response.status_code == 200, f"status={response.status_code}")
+    
+    # Step 15: Change own password (自助改密碼)
     print("\n--- Step 14: Change Own Password ---")
     
     # 14.1 Create e2e-pwc user with admin token
@@ -586,6 +668,113 @@ def main():
     r = client.post("/api/v1/auth/me/password", json={"old_password": "pwc-next-22", "new_password": "pwc-start-1"})
     check("Reset e2e-pwc password back to pwc-start-1 200", r.status_code == 200, r.text[:200])
 
+    # Step 16: Create SO via API
+    print("\n--- Step 16: Create SO via API ---")
+    
+    ts = datetime.now().strftime("%Y%m%d%H%M%S")
+    test_so_number = f"SO-E2E-API-{ts}"
+    
+    # Get customers first
+    response = client.get("/api/v1/customers")
+    assert response.status_code == 200
+    customers = response.json()
+    test_customer_id = customers[0]["customer_id"] if customers else None
+    
+    # Get items to ensure we have valid SKUs with inventory
+    response = client.get("/api/v1/picking/orders")
+    assert response.status_code == 200
+    
+    # Use existing SKU with inventory
+    test_sku = SKU  # Use the same SKU we've been using
+    
+    # Test 1: Create new SO successfully with small quantity (less than existing inventory)
+    response = client.post(
+        "/api/v1/picking/orders",
+        json={
+            "soNumber": test_so_number,
+            "customerId": test_customer_id,
+            "strategy": "FIFO",
+            "lines": [{"internalSku": test_sku, "orderedQty": 10}],
+        },
+    )
+    check("POST /picking/orders create 201", response.status_code == 201, f"status={response.status_code}")
+    if response.status_code == 201:
+        so_data = response.json()
+        check("SO has correct soNumber", so_data.get("soNumber") == test_so_number, so_data.get("soNumber"))
+        check("SO status is OPEN", so_data.get("status") == "OPEN", so_data.get("status"))
+        check("SO has lines", so_data.get("totalLines", 0) > 0, so_data.get("totalLines"))
+        check("SO has correct totalQty", so_data.get("totalQty", 0) == 10, so_data.get("totalQty"))
+    
+    # Test 2: Duplicate SO number should return 409
+    response = client.post(
+        "/api/v1/picking/orders",
+        json={
+            "soNumber": test_so_number,
+            "customerId": test_customer_id,
+            "strategy": "FIFO",
+            "lines": [{"internalSku": test_sku, "orderedQty": 5}],
+        },
+    )
+    check("POST /picking/orders duplicate returns 409", response.status_code == 409, f"status={response.status_code}")
+    
+    # Test 3: Invalid strategy should return 400
+    response = client.post(
+        "/api/v1/picking/orders",
+        json={
+            "soNumber": "SO-INVALID-STRATEGY",
+            "customerId": test_customer_id,
+            "strategy": "INVALID",
+            "lines": [{"internalSku": test_sku, "orderedQty": 5}],
+        },
+    )
+    check("POST /picking/orders invalid strategy returns 400", response.status_code == 400, f"status={response.status_code}")
+    
+    # Test 4: Invalid customer_id should return 400
+    response = client.post(
+        "/api/v1/picking/orders",
+        json={
+            "soNumber": "SO-INVALID-CUST",
+            "customerId": 99999,
+            "strategy": "FIFO",
+            "lines": [{"internalSku": test_sku, "orderedQty": 5}],
+        },
+    )
+    check("POST /picking/orders invalid customer returns 400", response.status_code == 400, f"status={response.status_code}")
+    
+    # Test 5: Invalid SKU should return 400
+    response = client.post(
+        "/api/v1/picking/orders",
+        json={
+            "soNumber": "SO-INVALID-SKU",
+            "customerId": test_customer_id,
+            "strategy": "FIFO",
+            "lines": [{"internalSku": "SKU-NOT-EXIST", "orderedQty": 5}],
+        },
+    )
+    check("POST /picking/orders invalid SKU returns 400", response.status_code == 400, f"status={response.status_code}")
+    
+    # Test 6: Empty lines should return 400
+    response = client.post(
+        "/api/v1/picking/orders",
+        json={
+            "soNumber": "SO-EMPTY-LINES",
+            "customerId": test_customer_id,
+            "strategy": "FIFO",
+            "lines": [],
+        },
+    )
+    check("POST /picking/orders empty lines returns 400", response.status_code == 400, f"status={response.status_code}")
+    
+    # Test 7: Allocate the created SO
+    response = client.post(
+        "/api/v1/picking/allocate",
+        json={"so_number": test_so_number},
+    )
+    check("POST /picking/allocate created SO 200", response.status_code == 200, f"status={response.status_code}")
+    if response.status_code == 200:
+        alloc_data = response.json()
+        check("AllocatedQty == orderedQty (10)", alloc_data.get("allocatedQty") == 10, alloc_data.get("allocatedQty"))
+    
     print(f"\nRESULT: {_passed} passed, {_failed} failed")
     sys.exit(1 if _failed else 0)
 

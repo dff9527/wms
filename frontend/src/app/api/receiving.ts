@@ -138,3 +138,89 @@ export async function printLabel(lotId: number): Promise<{
   const response = await axios.post(`${API_BASE_URL}/api/v1/receiving/print-label`, { lot_id: lotId });
   return response.data;
 }
+
+// ==================== Purchase Order APIs ====================
+
+export interface POItem {
+  poNumber: string;
+  vendorId: number;
+  vendorName: string;
+  poDate: string;
+  status: string;
+  lines: Array<{
+    lineNumber: number;
+    internalSku: string;
+    vendorPn: string;
+    orderedQty: number;
+    receivedQty: number;
+  }>;
+}
+
+export async function listPOs(): Promise<POItem[]> {
+  const response = await axios.get<{ items?: POItem[] }>(`${API_BASE_URL}/api/v1/purchase-orders`);
+  return Array.isArray(response.data) ? response.data : (response.data.items || []);
+}
+
+export interface ItemOption {
+  internalSku: string;
+  description: string;
+}
+
+export async function listItems(): Promise<ItemOption[]> {
+  const response = await axios.get<{ items?: ItemOption[] }>(
+    `${API_BASE_URL}/api/v1/purchase-orders/items`
+  );
+  return Array.isArray(response.data) ? response.data : (response.data.items || []);
+}
+
+export async function listOpenPOs(): Promise<string[]> {
+  const response = await axios.get<{ items?: Array<{ poNumber: string; status: string }> }>(
+    `${API_BASE_URL}/api/v1/purchase-orders/open-po-list`
+  );
+  const items = response.data.items || response.data;
+  return Array.isArray(items) ? items.map((item: any) => item.poNumber) : [];
+}
+
+export interface Vendor {
+  vendorId: number;
+  vendorName: string;
+}
+
+export async function listVendors(): Promise<Vendor[]> {
+  const response = await axios.get<{ items?: Vendor[] }>(`${API_BASE_URL}/api/v1/vendors`);
+  return Array.isArray(response.data) ? response.data : (response.data.items || []);
+}
+
+export interface CreatePORequest {
+  poNumber: string;
+  vendorId: number;
+  lines: Array<{
+    internalSku: string;
+    vendorPn: string;
+    orderedQty: number;
+  }>;
+}
+
+export interface CreatePOResponse {
+  poNumber: string;
+  vendorId: number;
+  vendorName: string;
+  poDate: string;
+  status: string;
+  lines: Array<{
+    lineNumber: number;
+    internalSku: string;
+    vendorPn: string;
+    orderedQty: number;
+    receivedQty: number;
+  }>;
+}
+
+export async function createPO(request: CreatePORequest): Promise<CreatePOResponse> {
+  const response = await axios.post<CreatePOResponse>(`${API_BASE_URL}/api/v1/purchase-orders`, {
+    poNumber: request.poNumber,
+    vendorId: request.vendorId,
+    lines: request.lines,
+  });
+  return response.data;
+}

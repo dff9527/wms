@@ -1,6 +1,7 @@
+from datetime import date
 from fastapi import APIRouter, Depends, HTTPException
 from sqlalchemy.orm import Session
-from typing import Optional
+from typing import Optional, List
 
 from app.core.warehouse.picking import PickingEngine, InsufficientInventoryError
 from app.schemas.picking import (
@@ -11,6 +12,9 @@ from app.schemas.picking import (
     ConfirmPickResponse
 )
 from app.api.deps import get_db, get_current_user
+from app.models.order import SalesOrder, SOLine
+from app.models.customer import Customer
+from app.models.item import Item
 
 router = APIRouter(prefix="/api/v1/picking", tags=["picking"])
 
@@ -58,6 +62,114 @@ def confirm_pick(
         if "not found" in msg:
             raise HTTPException(status_code=404, detail=msg)
         raise HTTPException(status_code=400, detail=msg)
+
+
+VALID_STRATEGIES = {"FIFO", "FEFO"}
+
+@router.post("/orders", status_code=201)
+def create_so(
+    payload: dict,
+    db: Session = Depends(get_db),
+    current_user: dict = Depends(get_current_user),
+):
+    """
+    建立新銷售訂單.
+    body: {"soNumber": str, "customerId": int | null,
+           "strategy": "FIFO" | "FEFO",
+           "lines": [{"internalSku": str, "orderedQty": int}]}
+    """
+    so_number = payload.get("soNumber")
+    customer_id = payload.get("customerId")
+    strategy = payload.get("strategy", "FIFO")
+    lines = payload.get("lines", [])
+
+    if not so_number or not str(so_number).strip():
+        raise HTTPException(status_code=400, detail="soNumber is required")
+    so_number = str(so_number).strip()
+
+    # Validate soNumber not duplicate
+    existing = db.query(SalesOrder).filter(SalesOrder.so_number == so_number).first()
+    if existing:
+        raise HTTPException(status_code=409, detail=f"SO number '{so_number}' already exists")
+
+    # Validate strategy in whitelist
+    if strategy not in VALID_STRATEGIES:
+        raise HTTPException(status_code=400, detail=f"Invalid strategy '{strategy}'. Must be one of: {', '.join(VALID_STRATEGIES)}")
+
+    # Validate lines non-empty
+    if not lines:
+        raise HTTPException(status_code=400, detail="Lines cannot be empty")
+
+    # Validate customerId if provided
+    if customer_id is not None:
+        customer = db.query(Customer).filter(Customer.customer_id == customer_id).first()
+        if not customer:
+            raise HTTPException(status_code=400, detail=f"Customer ID {customer_id} not found")
+
+    # Validate each line
+    internal_skus = []
+    for line in lines:
+        ordered_qty = line.get("orderedQty")
+        if ordered_qty is None or ordered_qty <= 0:
+            raise HTTPException(status_code=400, detail="orderedQty must be greater than 0")
+        internal_sku = line.get("internalSku")
+        if internal_sku:
+            internal_skus.append(internal_sku)
+
+    # Validate all SKUs exist
+    if internal_skus:
+        missing_skus = []
+        for sku in internal_skus:
+            item = db.query(Item).filter(Item.internal_sku == sku).first()
+            if not item:
+                missing_skus.append(sku)
+        if missing_skus:
+            raise HTTPException(
+                status_code=400,
+                detail=f"SKU(s) not found: {', '.join(missing_skus)}"
+            )
+
+    # Create SalesOrder
+    so = SalesOrder(
+        so_number=so_number,
+        customer_id=customer_id,
+        order_date=date.today(),
+        status="OPEN",
+        lot_selection_rule=strategy,
+    )
+    db.add(so)
+    db.flush()  # Get so_id
+
+    # Create lines with line_number starting from 1
+    for idx, line in enumerate(lines, start=1):
+        so_line = SOLine(
+            so_id=so.so_id,
+            line_number=idx,
+            internal_sku=line.get("internalSku"),
+            ordered_qty=line.get("orderedQty", 1),
+        )
+        db.add(so_line)
+
+    db.commit()
+
+    # Fetch created SO with customer info and lines
+    customer_map = {}
+    if so.customer_id:
+        customer = db.query(Customer).filter(Customer.customer_id == so.customer_id).first()
+        customer_map[so.customer_id] = customer.customer_name if customer else ""
+    
+    so_lines = db.query(SOLine).filter(SOLine.so_id == so.so_id).all()
+    total_qty = sum(l.ordered_qty for l in so_lines)
+
+    return {
+        "soNumber": so.so_number,
+        "customer": customer_map.get(so.customer_id, ""),
+        "orderDate": so.order_date.isoformat() if so.order_date else "",
+        "status": so.status,
+        "totalLines": len(so_lines),
+        "totalQty": total_qty,
+        "strategy": so.lot_selection_rule or "FIFO",
+    }
 
 
 @router.get("/orders")

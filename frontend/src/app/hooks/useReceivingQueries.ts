@@ -6,6 +6,11 @@ import {
   printLabel,
   processReceipt,
   scanBarcode,
+  listVendors,
+  listPOs,
+  listItems,
+  createPO,
+  listOpenPOs,
 } from '../api/receiving';
 
 export function useReceivingList(params?: { poNumber?: string; status?: string }) {
@@ -53,5 +58,45 @@ export function useScanBarcode() {
 export function usePrintLabel() {
   return useMutation({
     mutationFn: printLabel,
+  });
+}
+
+// PO-related hooks
+export function useVendors() {
+  return useQuery({
+    queryKey: ['vendors'],
+    queryFn: () => listVendors(),
+  });
+}
+
+export function usePOs() {
+  return useQuery({
+    queryKey: ['purchase-orders'],
+    queryFn: () => listPOs(),
+  });
+}
+
+export function useItems() {
+  return useQuery({
+    queryKey: ['items'],
+    queryFn: () => listItems(),
+  });
+}
+
+export function useOpenPOs() {
+  return useQuery({
+    queryKey: ['open-po-list'],
+    queryFn: () => listOpenPOs(),
+  });
+}
+
+export function useCreatePO() {
+  const qc = useQueryClient();
+  return useMutation({
+    mutationFn: createPO,
+    onSuccess: () => {
+      qc.invalidateQueries({ queryKey: ['purchase-orders'] });
+      qc.invalidateQueries({ queryKey: ['open-po-list'] });
+    },
   });
 }
