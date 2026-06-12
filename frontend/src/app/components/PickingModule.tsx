@@ -626,7 +626,7 @@ export default function PickingModule() {
              className="flex items-center gap-2 px-4 py-2 bg-blue-600 text-white rounded-lg hover:bg-blue-700 transition-colors"
            >
              <Plus className="size-4" />
-             + 新增訂單
+             新增訂單
            </button>
          </div>
 
@@ -762,7 +762,7 @@ export default function PickingModule() {
                <button 
                 type="button" 
                 onClick={togglePickingMode}
-                disabled={pickWave.length === 0 || pickWave.every(t => String(t.status).toLowerCase() !== 'allocated')}
+                disabled={pickWave.length === 0 || !pickWave.some(t => String(t.status).toUpperCase() === 'PENDING')}
                 className="flex items-center gap-2 px-4 py-2 bg-blue-600 text-white rounded-lg hover:bg-blue-700 transition-colors disabled:opacity-50 disabled:cursor-not-allowed"
                >
                  <Play className="size-4" />
