@@ -1,8 +1,8 @@
 import { useMemo, useState } from 'react';
-import { ScanBarcode, Package, CheckCircle2, Printer, AlertTriangle } from 'lucide-react';
+import { ScanBarcode, Package, CheckCircle2, Printer, AlertTriangle, Loader2 } from 'lucide-react';
 import ReceivingList from './receiving/ReceivingList';
 import ReceivingDetail from './receiving/ReceivingDetail';
-import { useReceivingList, useScanBarcode, useProcessReceipt, useCompleteIQC } from '../hooks/useReceivingQueries';
+import { useReceivingList, useScanBarcode, useProcessReceipt, useCompleteIQC, usePrintLabel } from '../hooks/useReceivingQueries';
 import type { ReceivingItem } from '../types/receiving';
 
 /**
@@ -24,6 +24,7 @@ export default function ReceivingModule() {
   const [vendorId, setVendorId] = useState<number | null>(1);
   const [receivedLotId, setReceivedLotId] = useState<number | null>(null);
   const [suggestedLocation, setSuggestedLocation] = useState<string | null>(null);
+  const [isLabelPrinted, setIsLabelPrinted] = useState(false);
 
   const { data, isError, isPending } = useReceivingList();
   
@@ -31,6 +32,7 @@ export default function ReceivingModule() {
   const scanMutation = useScanBarcode();
   const receiveMutation = useProcessReceipt();
   const iqcMutation = useCompleteIQC();
+  const printLabelMutation = usePrintLabel();
 
   const rows = useMemo(() => {
     if (!isPending && data?.items && data.items.length > 0) return data.items;
@@ -104,8 +106,82 @@ export default function ReceivingModule() {
       
       // Reset flow state after IQC completion
       setReceivedLotId(null);
+      setIsLabelPrinted(false);
+      printLabelMutation.reset();
     } catch (error) {
       console.error("IQC failed:", error);
+    }
+  };
+
+  const handlePrintLabel = async () => {
+    if (!receivedLotId) return;
+    
+    try {
+      const response = await printLabelMutation.mutateAsync(receivedLotId);
+      
+      if (response.success) {
+        setIsLabelPrinted(true);
+      }
+    } catch (error) {
+      console.error("Print label failed:", error);
+    }
+  };
+
+  const handleBrowserPrint = () => {
+    if (!receivedLotId) return;
+    
+    // Get the label data from mutation cache or state
+    const labelData = printLabelMutation.data;
+    
+    // Get internal data from parsedData or use a default format
+    const internalLotNumber = parsedData?.lotCode || `LOT-${receivedLotId}`;
+    const internalBarcode = parsedData?.vendorPn ? `${parsedData.vendorPn}-${parsedData.lotCode}` : `BARCODE-${receivedLotId}`;
+    const quantity = parsedData?.qty ?? 1;
+    
+    const printWindow = window.open('', '_blank');
+    if (printWindow) {
+      printWindow.document.write(`
+        <!DOCTYPE html>
+        <html>
+        <head>
+          <title>內部標籤 - 批次 ${receivedLotId}</title>
+          <style>
+            body { font-family: Arial, sans-serif; padding: 20px; }
+            .header { font-size: 24px; font-weight: bold; margin-bottom: 20px; }
+            .info { margin-bottom: 15px; }
+            .label { font-weight: bold; color: #666; }
+            .value { font-family: 'Courier New', monospace; font-size: 18px; }
+            pre { 
+              background: #f5f5f5; 
+              padding: 15px; 
+              border: 1px solid #ddd; 
+              border-radius: 4px; 
+              max-height: 400px; 
+              overflow: auto;
+              font-size: 12px;
+            }
+          </style>
+        </head>
+        <body>
+          <div class="header">內部標籤</div>
+          <div class="info">
+            <div><span class="label">批次號:</span> <span class="value">${receivedLotId}</span></div>
+            <div><span class="label">內部條碼:</span> <span class="value">${internalBarcode}</span></div>
+            <div><span class="label">數量:</span> <span class="value">${quantity} PCS</span></div>
+          </div>
+          <div>
+            <span class="label">ZPL 原文:</span>
+            <pre>${labelData?.zpl || ''}</pre>
+          </div>
+          <script>
+            window.onload = function() {
+              window.print();
+            };
+          </script>
+        </body>
+        </html>
+      `);
+      printWindow.document.close();
     }
   };
 
@@ -237,9 +313,11 @@ export default function ReceivingModule() {
                        </button>
                        <button
                     type="button"
-                    className="px-4 py-2 bg-slate-600 text-white rounded-lg hover:bg-slate-700 transition-colors flex items-center gap-2"
+                    onClick={handlePrintLabel}
+                    disabled={receiveMutation.isPending}
+                    className="flex-1 px-4 py-2 bg-blue-600 text-white rounded-lg hover:bg-blue-700 transition-colors flex items-center justify-center gap-2 disabled:opacity-50"
                        >
-                         <Printer className="size-4" />
+                         {receiveMutation.isPending ? <Loader2 className="size-4 animate-spin" /> : <Printer className="size-4" />}
                     列印標籤
                        </button>
                      </div>
@@ -248,6 +326,48 @@ export default function ReceivingModule() {
                    <div className="space-y-3">
                      <p className="text-sm text-emerald-700 font-medium">已接收批次 #{receivedLotId}</p>
                      
+                     {/* Print Label Result */}
+                     {printLabelMutation.data?.success && (
+                       <div className="space-y-3">
+                         <div className="flex items-center gap-3 rounded-lg border border-emerald-200 bg-emerald-50 px-4 py-3 text-sm text-emerald-900">
+                           <CheckCircle2 className="size-5 shrink-0 mt-0.5" />
+                           <div>
+                             <p className="font-medium">標籤已產生</p>
+                             {printLabelMutation.data.printed && (
+                               <p className="text-emerald-700/90">已送出至標籤機</p>
+                             )}
+                           </div>
+                         </div>
+                         
+                         <div className="bg-slate-50 rounded-lg p-3 border border-slate-200">
+                           <div className="flex items-center justify-between mb-2">
+                             <span className="text-xs font-medium text-slate-700">ZPL 內容</span>
+                             <button
+                               type="button"
+                               onClick={handleBrowserPrint}
+                               disabled={printLabelMutation.isPending}
+                               className="text-xs px-3 py-1 bg-blue-600 text-white rounded hover:bg-blue-700 transition-colors disabled:opacity-50"
+                             >
+                               瀏覽器列印
+                             </button>
+                           </div>
+                           <pre className="text-xs font-mono max-h-40 overflow-auto bg-slate-100 p-2 rounded border border-slate-300 text-slate-800">
+                             {printLabelMutation.data.zpl}
+                           </pre>
+                         </div>
+                       </div>
+                     )}
+
+                     {printLabelMutation.error && (
+                       <div className="flex items-start gap-3 rounded-lg border border-red-200 bg-red-50 px-4 py-3 text-sm text-red-900">
+                         <AlertTriangle className="size-5 shrink-0 mt-0.5" />
+                         <div>
+                           <p className="font-medium">列印失敗</p>
+                           <p className="text-red-700/90">{printLabelMutation.error instanceof Error ? printLabelMutation.error.message : '未知錯誤'}</p>
+                         </div>
+                       </div>
+                     )}
+
                      {/* IQC Form */}
                      <div className="pt-4 border-t border-slate-200">
                        <label className="block text-xs text-slate-600 mb-1">檢驗結果</label>
@@ -290,7 +410,7 @@ export default function ReceivingModule() {
                              notesEl?.value || undefined
                            );
                          }}
-                         disabled={iqcMutation.isPending}
+                         disabled={iqcMutation.isPending || !isLabelPrinted}
                          className="w-full px-4 py-2 bg-blue-600 text-white rounded-lg hover:bg-blue-700 transition-colors flex items-center justify-center gap-2 disabled:opacity-50"
                        >
                          {iqcMutation.isPending ? "提交中..." : <>
@@ -298,6 +418,12 @@ export default function ReceivingModule() {
                            完成 IQC
                          </>}
                        </button>
+                       
+                       {!isLabelPrinted && (
+                         <p className="text-xs text-amber-600 mt-2">
+                           此供應商要求換標，請先列印內部標籤
+                         </p>
+                       )}
                      </div>
                    </div>
                  ) : (

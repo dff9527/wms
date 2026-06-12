@@ -3,6 +3,7 @@ import {
   completeIQC,
   getReceivingDetail,
   getReceivingList,
+  printLabel,
   processReceipt,
   scanBarcode,
 } from '../api/receiving';
@@ -45,5 +46,12 @@ export function useCompleteIQC() {
 export function useScanBarcode() {
   return useMutation({
     mutationFn: scanBarcode,
+  });
+}
+
+// Add usePrintLabel hook for label printing
+export function usePrintLabel() {
+  return useMutation({
+    mutationFn: printLabel,
   });
 }
