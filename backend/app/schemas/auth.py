@@ -12,6 +12,11 @@ class TokenResponse(BaseModel):
     token_type: str
 
 
+class PasswordChange(BaseModel):
+    old_password: str
+    new_password: str = Field(min_length=8)
+
+
 class UserOut(BaseModel):
     user_id: int
     username: str

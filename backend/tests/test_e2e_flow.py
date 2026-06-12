@@ -234,8 +234,13 @@ def main():
         if r.status_code != 404:
             check(f"GET {path} 200", r.status_code == 200, r.text[:200])
             if r.status_code == 200:
-                supplier = (r.json() or {}).get("supplier", {}).get("name")
+                body = r.json()
+                supplier = body.get("supplier", {}).get("name")
                 check("trace supplier == Texas Instruments", supplier == "Texas Instruments", supplier)
+                check("trace supplier.poNumber == seeded PO", body["supplier"]["poNumber"] == po_number, body["supplier"]["poNumber"])
+                check("trace shipments[0].shipDate non-empty",
+                      bool(body["shipments"]) and bool(body["shipments"][0]["shipDate"]), 
+                      body["shipments"][0]["shipDate"] if body.get("shipments") else "no shipments")
             break
 
     # --- NEW TEST STEPS START HERE ---
@@ -507,6 +512,79 @@ def main():
         db.close()
     
     # --- NEW TEST STEPS END HERE ---
+
+    # Step 14: Change own password (自助改密碼)
+    print("\n--- Step 14: Change Own Password ---")
+    
+    # 14.1 Create e2e-pwc user with admin token
+    # First, try to create user, if 409 (already exists), activate it and reset password
+    r = client.post("/api/v1/users", json={"username": "e2e-pwc", "password": "pwc-start-1", "role": "operator"})
+    user_id = None
+    if r.status_code == 409:
+        # User exists, get user_id from GET /api/v1/users and activate
+        r_users = client.get("/api/v1/users")
+        if r_users.status_code == 200:
+            users = r_users.json()
+            for u in users:
+                if u.get("username") == "e2e-pwc":
+                    user_id = u.get("user_id")
+                    break
+        if user_id:
+            # Activate user
+            r_patch = client.patch(f"/api/v1/users/{user_id}", json={"is_active": True})
+            check("Activate existing e2e-pwc user", r_patch.status_code == 200, r_patch.status_code)
+            # Reset password to pwc-start-1 using admin password reset endpoint
+            db = SessionLocal()
+            try:
+                existing_pwc = db.query(User).filter(User.username == "e2e-pwc").first()
+                if existing_pwc:
+                    existing_pwc.password_hash = hash_password("pwc-start-1")
+                    db.commit()
+                    check("Reset e2e-pwc password to pwc-start-1", True, "reset password")
+            finally:
+                db.close()
+    elif r.status_code == 201:
+        # User created successfully, get user_id
+        check("POST /api/v1/users create e2e-pwc 201", r.status_code == 201, r.text[:200])
+        r_users = client.get("/api/v1/users")
+        if r_users.status_code == 200:
+            users = r_users.json()
+            for u in users:
+                if u.get("username") == "e2e-pwc":
+                    user_id = u.get("user_id")
+                    break
+    
+    # 14.2 Login as e2e-pwc with pwc-start-1
+    client.headers.pop("Authorization", None)  # Clear admin token
+    r = client.post("/api/v1/auth/login", json={"username": "e2e-pwc", "password": "pwc-start-1"})
+    ok = check("e2e-pwc login with pwc-start-1 200", r.status_code == 200, r.text[:200])
+    e2e_pwc_token = None
+    if ok:
+        e2e_pwc_token = r.json()["access_token"]
+        client.headers.update({"Authorization": f"Bearer {e2e_pwc_token}"})
+    
+    # 14.3 Try changing password with wrong old password (should fail with 400)
+    r = client.post("/api/v1/auth/me/password", json={"old_password": "WRONG", "new_password": "pwc-next-22"})
+    check("Change password with wrong old password 400", r.status_code == 400, r.status_code)
+    
+    # 14.4 Change password with correct old password (should succeed with 200)
+    r = client.post("/api/v1/auth/me/password", json={"old_password": "pwc-start-1", "new_password": "pwc-next-22"})
+    ok = check("Change password with correct old password 200", r.status_code == 200, r.text[:200])
+    
+    # 14.5 Verify new password works and old password fails
+    # Login with new password
+    r = client.post("/api/v1/auth/login", json={"username": "e2e-pwc", "password": "pwc-next-22"})
+    check("e2e-pwc login with new password pwc-next-22 200", r.status_code == 200, r.text[:200])
+    
+    # Login with old password (should fail)
+    r = client.post("/api/v1/auth/login", json={"username": "e2e-pwc", "password": "pwc-start-1"})
+    check("e2e-pwc login with old password pwc-start-1 401", r.status_code == 401, r.status_code)
+    
+    # 14.6 Reset password back to pwc-start-1 for future test runs
+    if e2e_pwc_token:
+        client.headers.update({"Authorization": f"Bearer {e2e_pwc_token}"})
+    r = client.post("/api/v1/auth/me/password", json={"old_password": "pwc-next-22", "new_password": "pwc-start-1"})
+    check("Reset e2e-pwc password back to pwc-start-1 200", r.status_code == 200, r.text[:200])
 
     print(f"\nRESULT: {_passed} passed, {_failed} failed")
     sys.exit(1 if _failed else 0)

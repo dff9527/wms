@@ -2,9 +2,9 @@ from fastapi import APIRouter, Depends, HTTPException, status
 from sqlalchemy.orm import Session
 
 from app.api.deps import get_db, get_current_user
-from app.core.security import verify_password, create_access_token
+from app.core.security import verify_password, create_access_token, hash_password
 from app.models.user import User
-from app.schemas.auth import LoginRequest, TokenResponse, UserOut
+from app.schemas.auth import LoginRequest, TokenResponse, UserOut, PasswordChange
 
 router = APIRouter(prefix="/api/v1/auth", tags=["auth"])
 
@@ -57,3 +57,29 @@ def read_users_me(current_user_dict: dict = Depends(get_current_user), db: Sessi
         )
 
     return UserOut.from_orm(user)
+
+
+@router.post("/me/password", response_model=TokenResponse)
+def change_my_password(
+    password_data: PasswordChange,
+    db: Session = Depends(get_db),
+    current_user_dict: dict = Depends(get_current_user),
+):
+    """Change own password."""
+    username = current_user_dict["username"]
+    user = db.query(User).filter(User.username == username).first()
+    if not user:
+        raise HTTPException(status_code=404, detail="User not found")
+
+    if not verify_password(password_data.old_password, user.password_hash):
+        raise HTTPException(
+            status_code=status.HTTP_400_BAD_REQUEST,
+            detail="Incorrect old password",
+        )
+
+    user.password_hash = hash_password(password_data.new_password)
+    db.commit()
+    return TokenResponse(
+        access_token=create_access_token(sub=user.username, role=user.role),
+        token_type="bearer"
+    )
