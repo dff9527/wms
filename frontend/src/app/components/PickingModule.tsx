@@ -1,8 +1,9 @@
 import { useState, useEffect } from 'react';
 import axios from 'axios';
-import { CheckCircle, Clock, ArrowRight, Package, MapPin, Calendar, Plus, Play, XCircle } from 'lucide-react';
+import { CheckCircle, Clock, ArrowRight, Package, MapPin, Calendar, Plus, Play, XCircle, Printer } from 'lucide-react';
 import type { FifoAllocationSummary, PickWaveTask } from '../types/wms-inventory';
 import AllocationResult from './picking/AllocationResult';
+import { printHtml } from '../utils/printWindow';
 
 // Customer interface matching CustomerOut (snake_case)
 interface Customer {
@@ -157,9 +158,12 @@ export default function PickingModule() {
         so_number: selectedSo,
         shipper: 'operator'
       });
-      
-      // On success, fetch packing list
+
+      // On success, fetch packing list and refresh wave/orders; exit picking mode
       await fetchPackingList(selectedSo);
+      setIsPickingMode(false);
+      await fetchPickWave();
+      await fetchSalesOrders();
     } catch (err: any) {
       setConfirmError(err.response?.data?.detail || '確認出貨失敗');
     }
@@ -251,6 +255,132 @@ export default function PickingModule() {
     setPickWaveWithPicking(prev => prev.map(t => 
       t.taskId === taskId ? { ...t, pickedQty: isNaN(numValue) ? 0 : numValue } : t
     ));
+  };
+
+  // Print pick wave function
+  const printPickWave = () => {
+    if (pickWave.length === 0) return;
+    
+    const now = new Date();
+    const DateTimeString = now.toLocaleString('zh-TW', {
+      year: 'numeric',
+      month: '2-digit',
+      day: '2-digit',
+      hour: '2-digit',
+      minute: '2-digit',
+      second: '2-digit'
+    });
+    
+    const headerHtml = `
+      <div class="print-title">揀貨單 Pick Wave</div>
+      <div class="print-subtitle">列印日期: ${DateTimeString}</div>
+      <div class="info-row"><span class="info-label">訂單編號:</span><span class="info-value">${selectedSo || 'N/A'}</span></div>
+      <div class="info-row"><span class="info-label">總任務數:</span><span class="info-value">${totalTasks}</span></div>
+      <hr style="border: 1px solid #000; margin: 15px 0;">
+    `;
+    
+    let tableHtml = `
+      <table>
+        <thead>
+          <tr>
+            <th>序號</th>
+            <th>儲位</th>
+            <th>料號</th>
+            <th>內部批號</th>
+            <th>內部條碼</th>
+            <th>供應商批號</th>
+            <th>揀貨量</th>
+            <th>狀態</th>
+          </tr>
+        </thead>
+        <tbody>
+    `;
+    
+    pickWave.forEach((task) => {
+      const statusText = String(task.status || '—').toLowerCase();
+      let statusLabel = task.status || '—';
+      if (statusText.includes('pending')) statusLabel = '待配貨';
+      else if (statusText.includes('allocated')) statusLabel = '已配貨';
+      else if (statusText.includes('picking')) statusLabel = '揀貨中';
+      else if (statusText.includes('completed')) statusLabel = '已完成';
+      else if (statusText.includes('picked')) statusLabel = '已揀貨';
+      else if (statusText.includes('confirmed')) statusLabel = '已確認';
+      else if (statusText.includes('cancelled')) statusLabel = '已取消';
+      else if (statusText.includes('shipped')) statusLabel = '已出貨';
+      else if (statusText.includes('closed')) statusLabel = '已關閉';
+      
+      tableHtml += `
+        <tr>
+          <td>${task.sequence}</td>
+          <td>${task.location || '—'}</td>
+          <td>${task.internalSku}</td>
+          <td>${task.internalLotNumber || '—'}</td>
+          <td>${task.internalBarcode || '—'}</td>
+          <td>${task.vendorLotCode || '—'}</td>
+          <td>${task.pickQty}</td>
+          <td>${statusLabel}</td>
+        </tr>
+      `;
+    });
+    
+    tableHtml += `</tbody></table>`;
+    
+    printHtml(`揀貨單 - ${selectedSo || 'N/A'}`, headerHtml + tableHtml);
+  };
+
+  // Print packing list function
+  const printPackingList = () => {
+    if (!packingList || !packingList.items.length) return;
+    
+    const now = new Date();
+    const DateTimeString = now.toLocaleString('zh-TW', {
+      year: 'numeric',
+      month: '2-digit',
+      day: '2-digit',
+      hour: '2-digit',
+      minute: '2-digit',
+      second: '2-digit'
+    });
+    
+    const headerHtml = `
+      <div class="print-title">裝箱單 Packing List</div>
+      <div class="print-subtitle">訂單編號: ${packingList.soNumber} · 列印日期: ${DateTimeString}</div>
+      <hr style="border: 1px solid #000; margin: 15px 0;">
+    `;
+    
+    let contentHtml = '';
+    
+    packingList.items.forEach((item) => {
+      let itemTableHtml = `
+        <h2>料號: ${item.sku}</h2>
+        <table>
+          <thead>
+            <tr>
+              <th>內部批號</th>
+              <th>數量</th>
+              <th>收貨日期</th>
+              <th>儲位</th>
+            </tr>
+          </thead>
+          <tbody>
+      `;
+      
+      item.lots.forEach((lot) => {
+        itemTableHtml += `
+          <tr>
+            <td>${lot.internalLotNumber || '—'}</td>
+            <td>${lot.qty}</td>
+            <td>${lot.receiveDate || '—'}</td>
+            <td>${lot.location || '—'}</td>
+          </tr>
+        `;
+      });
+      
+      itemTableHtml += `</tbody></table>`;
+      contentHtml += itemTableHtml;
+    });
+    
+    printHtml(`裝箱單 - ${packingList.soNumber}`, headerHtml + contentHtml);
   };
 
   useEffect(() => {
@@ -610,8 +740,14 @@ export default function PickingModule() {
              <p className="text-sm text-slate-500">已依儲位路徑優化排序 · 揀貨時請掃描內部條碼</p>
            </div>
            <div className="flex gap-2">
-             <button type="button" className="px-4 py-2 bg-slate-100 text-slate-700 rounded-lg hover:bg-slate-200 transition-colors">
-              列印揀貨單
+             <button 
+               type="button" 
+               onClick={() => printPickWave()}
+               disabled={pickWave.length === 0}
+               className="flex items-center gap-2 px-4 py-2 bg-slate-100 text-slate-700 rounded-lg hover:bg-slate-200 transition-colors disabled:opacity-50 disabled:cursor-not-allowed"
+             >
+               <Printer className="size-4" />
+               列印揀貨單
              </button>
              {isPickingMode ? (
                <button 
@@ -715,6 +851,15 @@ export default function PickingModule() {
                <h2 className="text-xl font-semibold text-slate-900">裝箱清單</h2>
                <p className="text-sm text-slate-500 mt-1">訂單: {packingList.soNumber}</p>
              </div>
+             <button 
+               type="button" 
+               onClick={() => printPackingList()}
+               disabled={!packingList.items.length}
+               className="flex items-center gap-2 px-4 py-2 bg-slate-100 text-slate-700 rounded-lg hover:bg-slate-200 transition-colors disabled:opacity-50 disabled:cursor-not-allowed"
+             >
+               <Printer className="size-4" />
+               列印裝箱單
+             </button>
            </div>
 
            <div className="space-y-4">

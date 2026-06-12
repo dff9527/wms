@@ -197,9 +197,11 @@ class PickingEngine:
         )
 
     def generate_pick_wave(self, picker_id: Optional[str] = None) -> List[Dict]:
+        # PENDING + PICKED 都回傳:揀貨模式要顯示進度,且「確認出貨」閘門
+        # 需要看到已揀完的任務;出貨後任務轉 CONFIRMED 自然退出波次
         tasks = (
             self.db.query(PickTask)
-            .filter(PickTask.status == 'PENDING')
+            .filter(PickTask.status.in_(['PENDING', 'PICKED']))
             .order_by(PickTask.from_location_id)
             .all()
         )
