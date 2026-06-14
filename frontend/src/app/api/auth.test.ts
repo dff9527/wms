@@ -38,6 +38,9 @@ describe('login', () => {
     (axios.post as Mock).mockResolvedValue({
       data: { access_token: 'tok-123', token_type: 'bearer' },
     });
+    (axios.get as Mock).mockResolvedValue({
+      data: { username: 'jerry', role: 'admin' },
+    });
 
     await login('jerry', 'pw');
 

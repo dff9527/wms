@@ -22,12 +22,18 @@ from app.db.base import Base
 class InventoryLot(Base):
     __tablename__ = "inventory_lots"
     __table_args__ = (
-        CheckConstraint("quantity_reserved <= quantity_on_hand", name="check_reserved_qty"),
+        CheckConstraint(
+            "quantity_reserved <= quantity_on_hand", name="check_reserved_qty"
+        ),
     )
 
     lot_id: Mapped[int] = mapped_column(Integer, primary_key=True)
-    internal_sku: Mapped[str] = mapped_column(ForeignKey("items.internal_sku"), nullable=False)
-    internal_barcode: Mapped[str] = mapped_column(String(100), unique=True, nullable=False)
+    internal_sku: Mapped[str] = mapped_column(
+        ForeignKey("items.internal_sku"), nullable=False
+    )
+    internal_barcode: Mapped[str] = mapped_column(
+        String(100), unique=True, nullable=False
+    )
     internal_lot_number: Mapped[str] = mapped_column(String(50), nullable=False)
 
     vendor_id: Mapped[int | None] = mapped_column(ForeignKey("vendors.vendor_id"))
@@ -43,7 +49,9 @@ class InventoryLot(Base):
     )
     unit: Mapped[str | None] = mapped_column(String(10))
 
-    location_id: Mapped[int | None] = mapped_column(ForeignKey("storage_locations.location_id"))
+    location_id: Mapped[int | None] = mapped_column(
+        ForeignKey("storage_locations.location_id")
+    )
 
     manufacture_date: Mapped[date | None] = mapped_column(Date)
     receive_date: Mapped[datetime] = mapped_column(DateTime, server_default=func.now())
@@ -59,7 +67,9 @@ class InventoryLot(Base):
     coc_file_path: Mapped[str | None] = mapped_column(String(500))
     msds_file_path: Mapped[str | None] = mapped_column(String(500))
 
-    parent_lot_id: Mapped[int | None] = mapped_column(ForeignKey("inventory_lots.lot_id"))
+    parent_lot_id: Mapped[int | None] = mapped_column(
+        ForeignKey("inventory_lots.lot_id")
+    )
     split_from_transaction_id: Mapped[int | None] = mapped_column(Integer)
 
     raw_scan_data: Mapped[dict | None] = mapped_column(JSONB)
@@ -68,7 +78,9 @@ class InventoryLot(Base):
     updated_at: Mapped[datetime] = mapped_column(DateTime, server_default=func.now())
 
     # 關聯（spec §6.3 引擎程式碼使用 lot.location / lot.vendor）
-    location = relationship("StorageLocation", foreign_keys=[location_id], lazy="joined")
+    location = relationship(
+        "StorageLocation", foreign_keys=[location_id], lazy="joined"
+    )
     vendor = relationship("Vendor", foreign_keys=[vendor_id], lazy="joined")
 
 
@@ -81,8 +93,12 @@ class InventoryTransaction(Base):
     quantity_change: Mapped[int] = mapped_column(Integer, nullable=False)
     quantity_before: Mapped[int | None] = mapped_column(Integer)
     quantity_after: Mapped[int | None] = mapped_column(Integer)
-    from_location_id: Mapped[int | None] = mapped_column(ForeignKey("storage_locations.location_id"))
-    to_location_id: Mapped[int | None] = mapped_column(ForeignKey("storage_locations.location_id"))
+    from_location_id: Mapped[int | None] = mapped_column(
+        ForeignKey("storage_locations.location_id")
+    )
+    to_location_id: Mapped[int | None] = mapped_column(
+        ForeignKey("storage_locations.location_id")
+    )
     reference_type: Mapped[str | None] = mapped_column(String(20))
     reference_number: Mapped[str | None] = mapped_column(String(50))
     executed_by: Mapped[str] = mapped_column(String(50), nullable=False)

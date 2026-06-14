@@ -4,10 +4,10 @@ from sqlalchemy.orm import Session
 
 from app.core.warehouse.shipping import ShippingService
 from app.schemas.shipping import (
-    ConfirmShipmentRequest, 
-    ConfirmShipmentResponse, 
-    PackingListResponse, 
-    PendingShipment
+    ConfirmShipmentRequest,
+    ConfirmShipmentResponse,
+    PackingListResponse,
+    PendingShipment,
 )
 from app.models.customer import Customer
 
@@ -25,7 +25,9 @@ def confirm_shipment(
     try:
         service = ShippingService(db)
         # shipper 以登入者為準,不信任 body
-        result = service.confirm_shipment(request.so_number, current_user["username"], request.shipping_notes)
+        result = service.confirm_shipment(
+            request.so_number, current_user["username"], request.shipping_notes
+        )
         db.commit()
         return result
     except ValueError as e:
@@ -42,19 +44,27 @@ def get_packing_list(so_number: str, db: Session = Depends(get_db)):
 @router.get("/pending", response_model=List[PendingShipment])
 def list_pending(db: Session = Depends(get_db)):
     from app.models.order import SalesOrder
-      # Find SOs that are ready/awaiting shipment (e.g., status 'PICKED' or similar)
-    pending_sos = db.query(SalesOrder).filter(SalesOrder.status.in_(['PICKED', 'READY_TO_SHIP'])).all()
-    
+
+    # Find SOs that are ready/awaiting shipment (e.g., status 'PICKED' or similar)
+    pending_sos = (
+        db.query(SalesOrder)
+        .filter(SalesOrder.status.in_(["PICKED", "READY_TO_SHIP"]))
+        .all()
+    )
+
     # Batch lookup for customer names to avoid N+1
     customer_ids = {so.customer_id for so in pending_sos if so.customer_id is not None}
     customers_map = {}
     if customer_ids:
-        customers = db.query(Customer).filter(Customer.customer_id.in_(customer_ids)).all()
+        customers = (
+            db.query(Customer).filter(Customer.customer_id.in_(customer_ids)).all()
+        )
         customers_map = {c.customer_id: c.customer_name for c in customers}
 
     result = []
     for so in pending_sos:
         from app.models.order import SOLine
+
         so_lines = db.query(SOLine).filter(SOLine.so_id == so.so_id).all()
         total_qty = sum(l.ordered_qty for l in so_lines)
 
@@ -62,12 +72,14 @@ def list_pending(db: Session = Depends(get_db)):
         if so.customer_id is not None:
             customer_name = customers_map.get(so.customer_id, str(so.customer_id))
 
-        result.append({
-              "so_number": so.so_number,
-              "customer_name": customer_name,
-              "total_lines": len(so_lines),
-              "total_qty": total_qty,
-              "status": so.status
-          })
-        
+        result.append(
+            {
+                "so_number": so.so_number,
+                "customer_name": customer_name,
+                "total_lines": len(so_lines),
+                "total_qty": total_qty,
+                "status": so.status,
+            }
+        )
+
     return result

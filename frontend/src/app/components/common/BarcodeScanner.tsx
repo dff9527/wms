@@ -1,9 +1,9 @@
-"use client";
+'use client';
 
-import React, { useState, useRef, useEffect } from "react";
-import { Input } from "@/app/components/ui/input";
-import { Button } from "@/app/components/ui/button";
-import { ScanBarcodeIcon } from "lucide-react"; // Assuming lucide icons are used per common shadcn projects
+import React, { useState, useRef, useEffect } from 'react';
+import { Input } from '@/app/components/ui/input';
+import { Button } from '@/app/components/ui/button';
+import { ScanBarcodeIcon } from 'lucide-react'; // Assuming lucide icons are used per common shadcn projects
 
 interface BarcodeScannerProps {
   /**
@@ -20,7 +20,7 @@ interface BarcodeScannerProps {
 
 /**
  * Controlled, keyboard-wedge-friendly barcode input component.
- * 
+ *
  * Features:
  * - Captures scanned or typed barcode strings.
  * - Submits on Enter key press (standard for keyboard wedges).
@@ -33,36 +33,36 @@ export function BarcodeScanner({
   value,
   onChange,
   onScan,
-  placeholder = "請掃描或輸入條碼...",
+  placeholder = '請掃描或輸入條碼...',
   disabled = false,
   autoFocus = false,
 }: BarcodeScannerProps) {
-  const [internalValue, setInternalValue] = useState("");
+  const [internalValue, setInternalValue] = useState('');
   const [scanSuccess, setScanSuccess] = useState(false);
-  const [lastScanned, setLastScanned] = useState("");
+  const [lastScanned, setLastScanned] = useState('');
   const inputRef = useRef<HTMLInputElement>(null);
 
-   // Sync internal state if controlled via props
+  // Sync internal state if controlled via props
   useEffect(() => {
     if (value !== undefined) {
       setInternalValue(value);
-     }
-   }, [value]);
+    }
+  }, [value]);
 
   const handleChange = (e: React.ChangeEvent<HTMLInputElement>) => {
     const newValue = e.target.value;
     setInternalValue(newValue);
     if (onChange) {
       onChange(newValue);
-     }
-   };
+    }
+  };
 
   const handleSubmit = () => {
     const trimmedValue = internalValue.trim();
-    
+
     if (!trimmedValue) {
       return; // No-op for empty input
-     }
+    }
 
     onScan(trimmedValue);
 
@@ -76,30 +76,30 @@ export function BarcodeScanner({
     }, 800);
 
     // Clear input after successful scan if not strictly controlled externally preventing it
-    // If 'value' prop is provided, the parent controls clearing. 
+    // If 'value' prop is provided, the parent controls clearing.
     // If uncontrolled (no value prop), we clear locally.
     if (value === undefined) {
-      setInternalValue("");
-     }
-    
-     // Refocus input for rapid scanning
+      setInternalValue('');
+    }
+
+    // Refocus input for rapid scanning
     setTimeout(() => {
-        inputRef.current?.focus();
-     }, 10);
-   };
+      inputRef.current?.focus();
+    }, 10);
+  };
 
   const handleKeyDown = (e: React.KeyboardEvent<HTMLInputElement>) => {
-    if (e.key === "Enter") {
+    if (e.key === 'Enter') {
       e.preventDefault();
       handleSubmit();
-     }
-   };
+    }
+  };
 
   return (
-     <div className="flex w-full max-w-full items-center gap-2">
-       <div className="flex flex-col flex-1">
-         <div className="flex items-center gap-2">
-           <Input
+    <div className="flex w-full max-w-full items-center gap-2">
+      <div className="flex flex-col flex-1">
+        <div className="flex items-center gap-2">
+          <Input
             ref={inputRef}
             type="text"
             value={internalValue}
@@ -111,27 +111,27 @@ export function BarcodeScanner({
             aria-label="Barcode Input"
             autoComplete="off"
             autoFocus={autoFocus}
-           />
-           <Button 
-            onClick={handleSubmit} 
+          />
+          <Button
+            onClick={handleSubmit}
             disabled={disabled || !internalValue.trim()}
             variant="outline"
             size="icon"
             title="解析條碼"
             className={`min-h-[44px] min-w-[44px] ${scanSuccess ? 'ring-2 ring-green-500' : ''}`}
-           >
-             <ScanBarcodeIcon className="h-4 w-4" />
-             <span className="sr-only">解析</span>
-           </Button>
-         </div>
-         {lastScanned && (
-           <p className="mt-1 text-xs text-slate-500">
-             上次掃描: <span className="font-mono text-slate-700">{lastScanned}</span>
-           </p>
-         )}
-       </div>
-     </div>
-   );
+          >
+            <ScanBarcodeIcon className="h-4 w-4" />
+            <span className="sr-only">解析</span>
+          </Button>
+        </div>
+        {lastScanned && (
+          <p className="mt-1 text-xs text-slate-500">
+            上次掃描: <span className="font-mono text-slate-700">{lastScanned}</span>
+          </p>
+        )}
+      </div>
+    </div>
+  );
 }
 
 export default BarcodeScanner;

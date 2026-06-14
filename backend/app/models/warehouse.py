@@ -36,10 +36,14 @@ class StorageLocation(Base):
     __tablename__ = "storage_locations"
 
     location_id: Mapped[int] = mapped_column(Integer, primary_key=True)
-    warehouse_id: Mapped[int | None] = mapped_column(ForeignKey("warehouses.warehouse_id"))
+    warehouse_id: Mapped[int | None] = mapped_column(
+        ForeignKey("warehouses.warehouse_id")
+    )
     location_code: Mapped[str] = mapped_column(String(20), unique=True, nullable=False)
     location_type: Mapped[str | None] = mapped_column(String(10))
-    parent_location_id: Mapped[int | None] = mapped_column(ForeignKey("storage_locations.location_id"))
+    parent_location_id: Mapped[int | None] = mapped_column(
+        ForeignKey("storage_locations.location_id")
+    )
     capacity_kg: Mapped[float | None] = mapped_column(Numeric(10, 2))
     capacity_cbm: Mapped[float | None] = mapped_column(Numeric(10, 3))
     msl_level: Mapped[int | None] = mapped_column(Integer)
@@ -55,7 +59,9 @@ class LocationStatus(Base):
     location_id: Mapped[int] = mapped_column(
         ForeignKey("storage_locations.location_id"), primary_key=True
     )
-    current_occupancy_pct: Mapped[float | None] = mapped_column(Numeric(5, 2), default=0)
+    current_occupancy_pct: Mapped[float | None] = mapped_column(
+        Numeric(5, 2), default=0
+    )
     last_inventory_date: Mapped[datetime | None] = mapped_column(DateTime)
     status: Mapped[str] = mapped_column(String(20), default="AVAILABLE")
     updated_at: Mapped[datetime] = mapped_column(DateTime, server_default=func.now())

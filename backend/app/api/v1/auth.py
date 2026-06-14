@@ -40,7 +40,9 @@ def logout():
 
 # FIX: [fix_2] — Normalize indentation for read_users_me function body to 4 spaces
 @router.get("/me", response_model=UserOut)
-def read_users_me(current_user_dict: dict = Depends(get_current_user), db: Session = Depends(get_db)):
+def read_users_me(
+    current_user_dict: dict = Depends(get_current_user), db: Session = Depends(get_db)
+):
     # current_user_dict is {'username': ..., 'role': ...} from get_current_user
     username = current_user_dict["username"]
 
@@ -52,8 +54,8 @@ def read_users_me(current_user_dict: dict = Depends(get_current_user), db: Sessi
     if not user.is_active:
         raise HTTPException(
             status_code=status.HTTP_401_UNAUTHORIZED,
-            detail='Inactive user account',
-            headers={'WWW-Authenticate': 'Bearer'}
+            detail="Inactive user account",
+            headers={"WWW-Authenticate": "Bearer"},
         )
 
     return UserOut.from_orm(user)
@@ -81,5 +83,5 @@ def change_my_password(
     db.commit()
     return TokenResponse(
         access_token=create_access_token(sub=user.username, role=user.role),
-        token_type="bearer"
+        token_type="bearer",
     )

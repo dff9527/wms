@@ -18,7 +18,9 @@ def list_lots(
     vendor: Optional[int] = None,
     db: Session = Depends(get_db),
 ):
-    query_params = LotListQuery(sku=sku, status=status, location=location, vendor=vendor)
+    query_params = LotListQuery(
+        sku=sku, status=status, location=location, vendor=vendor
+    )
     service = InventoryService(db)
     return service.get_lots(query_params)
 
@@ -36,7 +38,9 @@ def get_lot_detail(lot_id: int, db: Session = Depends(get_db)):
 def adjust_inventory(
     request: AdjustRequest,
     db: Session = Depends(get_db),
-    current_user: dict = Depends(require_role("admin", "supervisor")),  # 調帳限主管/管理員
+    current_user: dict = Depends(
+        require_role("admin", "supervisor")
+    ),  # 調帳限主管/管理員
 ):
     service = InventoryService(db)
     # dump by FIELD name (lotId/quantityChange/...) to match what the service reads
@@ -49,7 +53,9 @@ def adjust_inventory(
 def split_lot_endpoint(
     request: SplitRequest,
     db: Session = Depends(get_db),
-    current_user: dict = Depends(require_role("admin", "supervisor")),  # 拆帶限主管/管理員
+    current_user: dict = Depends(
+        require_role("admin", "supervisor")
+    ),  # 拆帶限主管/管理員
 ):
     service = InventoryService(db)
     req_dict = request.model_dump()

@@ -14,7 +14,7 @@ class ParseResult(BaseModel):
     date_code: Optional[str] = None
     pattern_used: str
     pattern_id: Optional[int] = None
-    
+
     class Config:
         from_attributes = True
 
@@ -56,4 +56,3 @@ class PatternOut(BaseModel):
 
 class SetPatternActiveRequest(BaseModel):
     is_active: bool
-

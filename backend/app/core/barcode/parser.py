@@ -7,7 +7,7 @@ from app.models.vendor import BarcodePattern
 class BarcodeParser:
     """
     條碼解析引擎
-    
+
     核心功能:
      1. 依供應商自動選擇解析規則
      2. 使用 Regex 提取欄位
@@ -22,11 +22,11 @@ class BarcodeParser:
     def parse(self, barcode: str, vendor_id: int) -> Optional[Dict]:
         """
         主解析函式
-        
+
         Args:
             barcode: 原始條碼字串
             vendor_id: 供應商 ID
-        
+
         Returns:
             解析結果 Dict 或 None
         """
@@ -135,6 +135,5 @@ class BarcodeParser:
             data["qty"] = int(qty_str)
         except (ValueError, TypeError):
             pass
-            
-        return data
 
+        return data

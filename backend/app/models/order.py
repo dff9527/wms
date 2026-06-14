@@ -40,7 +40,9 @@ class POLine(Base):
     __table_args__ = (UniqueConstraint("po_id", "line_number"),)
 
     po_line_id: Mapped[int] = mapped_column(Integer, primary_key=True)
-    po_id: Mapped[int] = mapped_column(ForeignKey("purchase_orders.po_id", ondelete="CASCADE"))
+    po_id: Mapped[int] = mapped_column(
+        ForeignKey("purchase_orders.po_id", ondelete="CASCADE")
+    )
     line_number: Mapped[int] = mapped_column(Integer, nullable=False)
     internal_sku: Mapped[str | None] = mapped_column(ForeignKey("items.internal_sku"))
     vendor_pn: Mapped[str | None] = mapped_column(String(100))
@@ -74,7 +76,9 @@ class SOLine(Base):
     __table_args__ = (UniqueConstraint("so_id", "line_number"),)
 
     so_line_id: Mapped[int] = mapped_column(Integer, primary_key=True)
-    so_id: Mapped[int] = mapped_column(ForeignKey("sales_orders.so_id", ondelete="CASCADE"))
+    so_id: Mapped[int] = mapped_column(
+        ForeignKey("sales_orders.so_id", ondelete="CASCADE")
+    )
     line_number: Mapped[int] = mapped_column(Integer, nullable=False)
     internal_sku: Mapped[str | None] = mapped_column(ForeignKey("items.internal_sku"))
     ordered_qty: Mapped[int] = mapped_column(Integer, nullable=False)
@@ -82,7 +86,9 @@ class SOLine(Base):
     picked_qty: Mapped[int] = mapped_column(Integer, default=0)
     shipped_qty: Mapped[int] = mapped_column(Integer, default=0)
     required_date_code: Mapped[str | None] = mapped_column(String(20))
-    required_vendor_id: Mapped[int | None] = mapped_column(ForeignKey("vendors.vendor_id"))
+    required_vendor_id: Mapped[int | None] = mapped_column(
+        ForeignKey("vendors.vendor_id")
+    )
     created_at: Mapped[datetime] = mapped_column(DateTime, server_default=func.now())
 
     so = relationship("SalesOrder", back_populates="lines")
@@ -98,7 +104,9 @@ class PickTask(Base):
     status: Mapped[str] = mapped_column(String(20), default="PENDING")
     assigned_to: Mapped[str | None] = mapped_column(String(50))
     picked_at: Mapped[datetime | None] = mapped_column(DateTime)
-    from_location_id: Mapped[int | None] = mapped_column(ForeignKey("storage_locations.location_id"))
+    from_location_id: Mapped[int | None] = mapped_column(
+        ForeignKey("storage_locations.location_id")
+    )
     created_at: Mapped[datetime] = mapped_column(DateTime, server_default=func.now())
 
     # 關聯（spec §6.3 引擎使用 task.lot / task.so_line / task.from_location）

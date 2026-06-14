@@ -17,7 +17,7 @@ export function useReceivingList(params?: { poNumber?: string; status?: string }
   return useQuery({
     queryKey: ['receiving-list', params],
     queryFn: () => getReceivingList(params),
-   });
+  });
 }
 
 export function useReceivingDetail(lotId: number) {
@@ -25,7 +25,7 @@ export function useReceivingDetail(lotId: number) {
     queryKey: ['receiving-detail', lotId],
     queryFn: () => getReceivingDetail(lotId),
     enabled: lotId > 0,
-   });
+  });
 }
 
 export function useProcessReceipt() {
@@ -33,7 +33,7 @@ export function useProcessReceipt() {
   return useMutation({
     mutationFn: processReceipt,
     onSuccess: () => qc.invalidateQueries({ queryKey: ['receiving-list'] }),
-   });
+  });
 }
 
 export function useCompleteIQC() {
@@ -43,8 +43,8 @@ export function useCompleteIQC() {
     onSuccess: (_data, variables) => {
       qc.invalidateQueries({ queryKey: ['receiving-detail', variables.lotId] });
       qc.invalidateQueries({ queryKey: ['receiving-list'] });
-     },
-   });
+    },
+  });
 }
 
 // FIX: [fix_4] — Add useScanBarcode hook export to resolve TS2305 error in ReceivingModule

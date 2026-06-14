@@ -8,8 +8,8 @@ const API_BASE_URL = '/api/v1';
 // Helper to map snake_case API response to camelCase Frontend Type
 function mapToInventoryLotRow(data: any): InventoryLotRow {
   return {
-      // FIX: [fix_1] — Use exact field names matching InventoryLotRow type: id instead of lotId, qtyOnHand instead of quantityOnHand, qtyReserved instead of quantityReserved, location instead of locationCode, status instead of lotStatus
-     // FIX: [fix_1] — Renamed vendorPn to vendor to match the actual InventoryLotRow interface field name suggested by TypeScript compiler
+    // FIX: [fix_1] — Use exact field names matching InventoryLotRow type: id instead of lotId, qtyOnHand instead of quantityOnHand, qtyReserved instead of quantityReserved, location instead of locationCode, status instead of lotStatus
+    // FIX: [fix_1] — Renamed vendorPn to vendor to match the actual InventoryLotRow interface field name suggested by TypeScript compiler
     id: data.lot_id,
     internalSku: data.internal_sku,
     internalBarcode: data.internal_barcode,
@@ -25,7 +25,7 @@ function mapToInventoryLotRow(data: any): InventoryLotRow {
     description: data.description ?? '',
     receiveDate: data.receive_date ?? '',
     mslLevel: data.msl_level ?? 0,
-    };
+  };
 }
 
 export async function getInventoryLots(params?: {
@@ -36,7 +36,7 @@ export async function getInventoryLots(params?: {
 }): Promise<InventoryLotRow[]> {
   const queryParams = new URLSearchParams();
   if (params?.sku) queryParams.append('sku', params.sku);
-  if (params?.status) params.status.forEach(s => queryParams.append('status', s));
+  if (params?.status) params.status.forEach((s) => queryParams.append('status', s));
   if (params?.location) queryParams.append('location', params.location);
   if (params?.vendor) queryParams.append('vendor', String(params.vendor));
 
@@ -49,7 +49,11 @@ export async function getInventoryLotDetail(lotId: number): Promise<InventoryLot
   return mapToInventoryLotRow(response.data);
 }
 
-export async function adjustLot(payload: { lotId: number; quantityChange: number; reason?: string }) {
+export async function adjustLot(payload: {
+  lotId: number;
+  quantityChange: number;
+  reason?: string;
+}) {
   const response = await axios.post(`${API_BASE_URL}/inventory/adjust`, payload);
   return response.data;
 }
@@ -65,27 +69,27 @@ export function useInventoryLots(params?: Parameters<typeof getInventoryLots>[0]
   return useQuery({
     queryKey: ['inventory-lots', params],
     queryFn: () => getInventoryLots(params),
-    });
+  });
 }
 
 export function useAdjustLotMutation() {
   const queryClient = useQueryClient();
-  
+
   return useMutation({
     mutationFn: (payload: Parameters<typeof adjustLot>[0]) => adjustLot(payload),
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: ['inventory-lots'] });
-      },
-    });
+    },
+  });
 }
 
 export function useSplitLotMutation() {
   const queryClient = useQueryClient();
-  
+
   return useMutation({
     mutationFn: (payload: Parameters<typeof splitLot>[0]) => splitLot(payload),
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: ['inventory-lots'] });
-      },
-    });
+    },
+  });
 }

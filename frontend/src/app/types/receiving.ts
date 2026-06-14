@@ -2,7 +2,13 @@
  * 收貨／批次 API 與 UI 共用型別（對齊 CURSOR_INSTRUCTIONS.md）
  */
 
-export type ReceivingLotStatus = 'AVAILABLE' | 'RESERVED' | 'QC_HOLD' | 'QUARANTINE' | 'EXPIRED' | 'SHIPPED';
+export type ReceivingLotStatus =
+  | 'AVAILABLE'
+  | 'RESERVED'
+  | 'QC_HOLD'
+  | 'QUARANTINE'
+  | 'EXPIRED'
+  | 'SHIPPED';
 
 /** 對齊後端 snake_case JSON，經 api/receiving.ts 正規化成 ReceivingItem */
 export interface ReceivingItemApiRaw {

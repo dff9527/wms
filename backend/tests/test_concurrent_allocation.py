@@ -12,6 +12,7 @@
   正確結果:恰好一次成功,庫存只扣一次。
 兩個情境都有 30 秒 timeout,卡住代表死鎖。
 """
+
 import os
 import sys
 import threading
@@ -38,7 +39,10 @@ _failed = 0
 
 def check(label, cond, extra=""):
     global _passed, _failed
-    print(f"   [{'PASS' if cond else 'FAIL'}] {label}" + (f"   -> {extra}" if extra else ""))
+    print(
+        f"   [{'PASS' if cond else 'FAIL'}] {label}"
+        + (f"   -> {extra}" if extra else "")
+    )
     if cond:
         _passed += 1
     else:
@@ -48,24 +52,46 @@ def check(label, cond, extra=""):
 def _cleanup():
     db = SessionLocal()
     try:
-        so_ids = [r[0] for r in db.query(SalesOrder.so_id)
-                  .filter(SalesOrder.so_number.like(f"{SO_PREFIX}%")).all()]
-        line_ids = [r[0] for r in db.query(SOLine.so_line_id)
-                    .filter(SOLine.so_id.in_(so_ids)).all()] if so_ids else []
-        lot_ids = [r[0] for r in db.query(InventoryLot.lot_id)
-                   .filter(InventoryLot.internal_sku == SKU).all()]
+        so_ids = [
+            r[0]
+            for r in db.query(SalesOrder.so_id)
+            .filter(SalesOrder.so_number.like(f"{SO_PREFIX}%"))
+            .all()
+        ]
+        line_ids = (
+            [
+                r[0]
+                for r in db.query(SOLine.so_line_id)
+                .filter(SOLine.so_id.in_(so_ids))
+                .all()
+            ]
+            if so_ids
+            else []
+        )
+        lot_ids = [
+            r[0]
+            for r in db.query(InventoryLot.lot_id)
+            .filter(InventoryLot.internal_sku == SKU)
+            .all()
+        ]
         if line_ids or lot_ids:
             db.query(PickTask).filter(
                 (PickTask.so_line_id.in_(line_ids)) | (PickTask.lot_id.in_(lot_ids))
             ).delete(synchronize_session=False)
         if lot_ids:
             db.query(InventoryTransaction).filter(
-                InventoryTransaction.lot_id.in_(lot_ids)).delete(synchronize_session=False)
-            db.query(InventoryLot).filter(
-                InventoryLot.lot_id.in_(lot_ids)).delete(synchronize_session=False)
+                InventoryTransaction.lot_id.in_(lot_ids)
+            ).delete(synchronize_session=False)
+            db.query(InventoryLot).filter(InventoryLot.lot_id.in_(lot_ids)).delete(
+                synchronize_session=False
+            )
         if so_ids:
-            db.query(SOLine).filter(SOLine.so_id.in_(so_ids)).delete(synchronize_session=False)
-            db.query(SalesOrder).filter(SalesOrder.so_id.in_(so_ids)).delete(synchronize_session=False)
+            db.query(SOLine).filter(SOLine.so_id.in_(so_ids)).delete(
+                synchronize_session=False
+            )
+            db.query(SalesOrder).filter(SalesOrder.so_id.in_(so_ids)).delete(
+                synchronize_session=False
+            )
         db.commit()
     finally:
         db.close()
@@ -75,20 +101,39 @@ def _seed_lot_and_orders():
     db = SessionLocal()
     try:
         if not db.query(Item).filter(Item.internal_sku == SKU).first():
-            db.add(Item(internal_sku=SKU, item_type="IC", description="Concurrency test IC",
-                        base_unit="PCS"))
+            db.add(
+                Item(
+                    internal_sku=SKU,
+                    item_type="IC",
+                    description="Concurrency test IC",
+                    base_unit="PCS",
+                )
+            )
             db.commit()
-        db.add(InventoryLot(
-            internal_sku=SKU, internal_barcode="INT-CONC-001",
-            internal_lot_number="LOT-CONC-001", quantity_on_hand=1000,
-            quantity_reserved=0, unit="PCS", lot_status="AVAILABLE",
-             receive_date=utcnow() - timedelta(days=1)))
+        db.add(
+            InventoryLot(
+                internal_sku=SKU,
+                internal_barcode="INT-CONC-001",
+                internal_lot_number="LOT-CONC-001",
+                quantity_on_hand=1000,
+                quantity_reserved=0,
+                unit="PCS",
+                lot_status="AVAILABLE",
+                receive_date=utcnow() - timedelta(days=1),
+            )
+        )
         for i in (1, 2):
-            so = SalesOrder(so_number=f"{SO_PREFIX}{i}", order_date=date.today(),
-                            status="OPEN", lot_selection_rule="FIFO")
+            so = SalesOrder(
+                so_number=f"{SO_PREFIX}{i}",
+                order_date=date.today(),
+                status="OPEN",
+                lot_selection_rule="FIFO",
+            )
             db.add(so)
             db.flush()
-            db.add(SOLine(so_id=so.so_id, line_number=1, internal_sku=SKU, ordered_qty=800))
+            db.add(
+                SOLine(so_id=so.so_id, line_number=1, internal_sku=SKU, ordered_qty=800)
+            )
         db.commit()
     finally:
         db.close()
@@ -120,7 +165,9 @@ def test_concurrent_allocate_no_oversell():
     results = {}
     barrier = threading.Barrier(2)
     threads = [
-        threading.Thread(target=_allocate_in_thread, args=(f"{SO_PREFIX}{i}", results, barrier))
+        threading.Thread(
+            target=_allocate_in_thread, args=(f"{SO_PREFIX}{i}", results, barrier)
+        )
         for i in (1, 2)
     ]
     for t in threads:
@@ -132,14 +179,26 @@ def test_concurrent_allocate_no_oversell():
     check("no deadlock (both threads finished)", not hung, results)
 
     outcomes = sorted(results.values())
-    check("exactly one SUCCESS, one INSUFFICIENT", outcomes == ["INSUFFICIENT", "SUCCESS"], results)
+    check(
+        "exactly one SUCCESS, one INSUFFICIENT",
+        outcomes == ["INSUFFICIENT", "SUCCESS"],
+        results,
+    )
 
     db = SessionLocal()
-    lot = db.query(InventoryLot).filter(InventoryLot.internal_barcode == "INT-CONC-001").first()
+    lot = (
+        db.query(InventoryLot)
+        .filter(InventoryLot.internal_barcode == "INT-CONC-001")
+        .first()
+    )
     reserved, on_hand = lot.quantity_reserved, lot.quantity_on_hand
     tasks = db.query(PickTask).filter(PickTask.lot_id == lot.lot_id).count()
     db.close()
-    check("no oversell: reserved <= on_hand", reserved <= on_hand, f"reserved={reserved}, on_hand={on_hand}")
+    check(
+        "no oversell: reserved <= on_hand",
+        reserved <= on_hand,
+        f"reserved={reserved}, on_hand={on_hand}",
+    )
     check("reserved == 800 (single allocation only)", reserved == 800, reserved)
     check("only one SO's tasks exist", tasks == 1, f"tasks={tasks}")
 
@@ -149,7 +208,7 @@ def _confirm_in_thread(task_id, results, idx, barrier):
     try:
         barrier.wait(timeout=TIMEOUT_S)
         PickingEngine(db).confirm_pick(task_id, 800, f"racer-{idx}")
-        results[idx] = "SUCCESS"   # confirm_pick 內部已 commit
+        results[idx] = "SUCCESS"  # confirm_pick 內部已 commit
     except ValueError as e:
         db.rollback()
         results[idx] = "REJECTED"
@@ -183,21 +242,38 @@ def test_concurrent_confirm_no_double_deduct():
     for t in threads:
         t.join(timeout=TIMEOUT_S)
 
-    check("no deadlock on concurrent confirm", not any(t.is_alive() for t in threads), results)
+    check(
+        "no deadlock on concurrent confirm",
+        not any(t.is_alive() for t in threads),
+        results,
+    )
     outcomes = sorted(results.values())
-    check("exactly one confirm SUCCESS, one REJECTED", outcomes == ["REJECTED", "SUCCESS"], results)
+    check(
+        "exactly one confirm SUCCESS, one REJECTED",
+        outcomes == ["REJECTED", "SUCCESS"],
+        results,
+    )
 
     db = SessionLocal()
-    lot = db.query(InventoryLot).filter(InventoryLot.internal_barcode == "INT-CONC-001").first()
+    lot = (
+        db.query(InventoryLot)
+        .filter(InventoryLot.internal_barcode == "INT-CONC-001")
+        .first()
+    )
     db.close()
-    check("inventory deducted exactly once", lot.quantity_on_hand == qty_before - 800,
-          f"{qty_before} -> {lot.quantity_on_hand}")
+    check(
+        "inventory deducted exactly once",
+        lot.quantity_on_hand == qty_before - 800,
+        f"{qty_before} -> {lot.quantity_on_hand}",
+    )
 
 
 def main():
     if engine.dialect.name != "postgresql":
-        print(f"SKIP: dialect={engine.dialect.name} — row lock 只在 PostgreSQL 有意義,"
-              "請在本機 (5433) 執行。")
+        print(
+            f"SKIP: dialect={engine.dialect.name} — row lock 只在 PostgreSQL 有意義,"
+            "請在本機 (5433) 執行。"
+        )
         return
 
     print("Concurrency integration test (PostgreSQL)")

@@ -65,7 +65,9 @@ class VendorItem(Base):
     vendor_id: Mapped[int | None] = mapped_column(ForeignKey("vendors.vendor_id"))
     vendor_pn: Mapped[str] = mapped_column(String(100), nullable=False)
     internal_sku: Mapped[str | None] = mapped_column(ForeignKey("items.internal_sku"))
-    barcode_pattern_id: Mapped[int | None] = mapped_column(ForeignKey("barcode_patterns.pattern_id"))
+    barcode_pattern_id: Mapped[int | None] = mapped_column(
+        ForeignKey("barcode_patterns.pattern_id")
+    )
     approval_status: Mapped[str] = mapped_column(String(20), default="APPROVED")
     preferred_vendor: Mapped[bool] = mapped_column(Boolean, default=False)
     latest_unit_price: Mapped[float | None] = mapped_column(Numeric(10, 4))

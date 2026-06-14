@@ -11,7 +11,7 @@ class AllocationDetail(BaseModel):
     internalSku: str
     internalLotNumber: str
     internalBarcode: str
-    vendorLotCode: Optional[str] = None   # 拆帶/調整批次可能沒有原廠批號
+    vendorLotCode: Optional[str] = None  # 拆帶/調整批次可能沒有原廠批號
     qty: float
     receiveDate: str
     location: Optional[str] = None

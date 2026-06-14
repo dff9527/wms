@@ -11,24 +11,25 @@ from app.models.order import (
     SOLine,
     PickTask,
 )
+
 # FIX: fix_2 — Add User model import to register users table in Base.metadata
 from app.models.user import User
 
 __all__ = [
-     "Warehouse",
-     "StorageLocation",
-     "LocationStatus",
-     "Item",
-     "Vendor",
-     "BarcodePattern",
-     "VendorItem",
-     "InventoryLot",
-     "InventoryTransaction",
-     "PurchaseOrder",
-     "POLine",
-     "SalesOrder",
-     "SOLine",
-     "PickTask",
-     # FIX: fix_2 — Export User so importing app.models registers the users table
-     "User",
+    "Warehouse",
+    "StorageLocation",
+    "LocationStatus",
+    "Item",
+    "Vendor",
+    "BarcodePattern",
+    "VendorItem",
+    "InventoryLot",
+    "InventoryTransaction",
+    "PurchaseOrder",
+    "POLine",
+    "SalesOrder",
+    "SOLine",
+    "PickTask",
+    # FIX: fix_2 — Export User so importing app.models registers the users table
+    "User",
 ]

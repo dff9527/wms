@@ -35,11 +35,13 @@ export function mapRawToReceivingItem(raw: ReceivingItemApiRaw): ReceivingItem {
     lotStatus: normalizeStatus(raw.lot_status),
     receiveDate: raw.receive_date ?? '',
     locationCode: raw.location_code ?? undefined,
-    iqcResult: raw.iqc_result ? String(raw.iqc_result).toUpperCase() as ReceivingItem['iqcResult'] : undefined,
+    iqcResult: raw.iqc_result
+      ? (String(raw.iqc_result).toUpperCase() as ReceivingItem['iqcResult'])
+      : undefined,
     iqcDate: raw.iqc_date ?? undefined,
     iqcInspector: raw.iqc_inspector ?? undefined,
     qualityNotes: raw.quality_notes ?? undefined,
-   };
+  };
 }
 
 export interface ScanBarcodeRequest {
@@ -54,7 +56,7 @@ export interface ScanBarcodeResponse {
     qty: number;
     lotCode: string;
     dateCode?: string;
-   };
+  };
   patternUsed?: string;
 }
 
@@ -86,38 +88,51 @@ export async function getReceivingList(params?: {
   page?: number;
   pageSize?: number;
 }): Promise<ReceivingListResponse> {
-  const response = await axios.get<{ items: ReceivingItemApiRaw[]; total: number }>(`${API_BASE_URL}/api/v1/receiving/list`, {
-    params: {
-      po_number: params?.poNumber,
-      status: params?.status,
-      page: params?.page,
-      page_size: params?.pageSize,
-     },
-   });
+  const response = await axios.get<{ items: ReceivingItemApiRaw[]; total: number }>(
+    `${API_BASE_URL}/api/v1/receiving/list`,
+    {
+      params: {
+        po_number: params?.poNumber,
+        status: params?.status,
+        page: params?.page,
+        page_size: params?.pageSize,
+      },
+    }
+  );
   const { items, total } = response.data;
   return {
     items: items.map(mapRawToReceivingItem),
     total: total ?? items.length,
-   };
+  };
 }
 
 export async function getReceivingDetail(lotId: number): Promise<ReceivingItem> {
-  const response = await axios.get<ReceivingItemApiRaw>(`${API_BASE_URL}/api/v1/receiving/${lotId}`);
+  const response = await axios.get<ReceivingItemApiRaw>(
+    `${API_BASE_URL}/api/v1/receiving/${lotId}`
+  );
   return mapRawToReceivingItem(response.data);
 }
 
 export async function scanBarcode(request: ScanBarcodeRequest): Promise<ScanBarcodeResponse> {
-  const response = await axios.post<ScanBarcodeResponse>(`${API_BASE_URL}/api/v1/receiving/scan`, request);
+  const response = await axios.post<ScanBarcodeResponse>(
+    `${API_BASE_URL}/api/v1/receiving/scan`,
+    request
+  );
   return response.data;
 }
 
-export async function processReceipt(request: ProcessReceiptRequest): Promise<ProcessReceiptResponse> {
-  const response = await axios.post<ProcessReceiptResponse>(`${API_BASE_URL}/api/v1/receiving/receive`, {
-    po_number: request.poNumber,
-    barcode: request.barcode,
-    vendor_id: request.vendorId,
-    qty: request.qty,
-  });
+export async function processReceipt(
+  request: ProcessReceiptRequest
+): Promise<ProcessReceiptResponse> {
+  const response = await axios.post<ProcessReceiptResponse>(
+    `${API_BASE_URL}/api/v1/receiving/receive`,
+    {
+      po_number: request.poNumber,
+      barcode: request.barcode,
+      vendor_id: request.vendorId,
+      qty: request.qty,
+    }
+  );
   return response.data;
 }
 
@@ -135,7 +150,9 @@ export async function printLabel(lotId: number): Promise<{
   zpl: string;
   printed: boolean;
 }> {
-  const response = await axios.post(`${API_BASE_URL}/api/v1/receiving/print-label`, { lot_id: lotId });
+  const response = await axios.post(`${API_BASE_URL}/api/v1/receiving/print-label`, {
+    lot_id: lotId,
+  });
   return response.data;
 }
 
@@ -158,7 +175,7 @@ export interface POItem {
 
 export async function listPOs(): Promise<POItem[]> {
   const response = await axios.get<{ items?: POItem[] }>(`${API_BASE_URL}/api/v1/purchase-orders`);
-  return Array.isArray(response.data) ? response.data : (response.data.items || []);
+  return Array.isArray(response.data) ? response.data : response.data.items || [];
 }
 
 export interface ItemOption {
@@ -170,7 +187,7 @@ export async function listItems(): Promise<ItemOption[]> {
   const response = await axios.get<{ items?: ItemOption[] }>(
     `${API_BASE_URL}/api/v1/purchase-orders/items`
   );
-  return Array.isArray(response.data) ? response.data : (response.data.items || []);
+  return Array.isArray(response.data) ? response.data : response.data.items || [];
 }
 
 export async function listOpenPOs(): Promise<string[]> {
@@ -188,7 +205,7 @@ export interface Vendor {
 
 export async function listVendors(): Promise<Vendor[]> {
   const response = await axios.get<{ items?: Vendor[] }>(`${API_BASE_URL}/api/v1/vendors`);
-  return Array.isArray(response.data) ? response.data : (response.data.items || []);
+  return Array.isArray(response.data) ? response.data : response.data.items || [];
 }
 
 export interface CreatePORequest {

@@ -25,16 +25,21 @@ class AdjustmentService:
         Positive change = Add stock (RECEIVE/ADJUST IN)
         Negative change = Remove stock (SCRAP/ADJUST OUT)
         """
-        lot = self.db.query(InventoryLot).filter(InventoryLot.lot_id == lot_id).with_for_update(of=InventoryLot).first()
+        lot = (
+            self.db.query(InventoryLot)
+            .filter(InventoryLot.lot_id == lot_id)
+            .with_for_update(of=InventoryLot)
+            .first()
+        )
         if not lot:
             raise HTTPException(status.HTTP_404_NOT_FOUND, "Lot not found")
 
         new_qty = lot.quantity_on_hand + quantity_change
-        
+
         if new_qty < 0:
             raise HTTPException(
-                status.HTTP_400_BAD_REQUEST, 
-                f"Insufficient quantity. Current: {lot.quantity_on_hand}, Requested Change: {quantity_change}"
+                status.HTTP_400_BAD_REQUEST,
+                f"Insufficient quantity. Current: {lot.quantity_on_hand}, Requested Change: {quantity_change}",
             )
 
         old_qty = lot.quantity_on_hand
@@ -57,16 +62,16 @@ class AdjustmentService:
             notes=notes,
             created_at=utcnow(),
         )
-        
+
         self.db.add(transaction)
-        
+
         try:
             self.db.commit()
             self.db.refresh(lot)
         except Exception as e:
             self.db.rollback()
             raise HTTPException(status.HTTP_500_INTERNAL_SERVER_ERROR, str(e))
-            
+
         return {"success": True, "newQuantity": new_qty}
 
     def split_lot(
@@ -82,25 +87,30 @@ class AdjustmentService:
         Child inherits all attributes from Parent except ID/Barcode/LotNumber.
         Sets parent_lot_id on Child.
         """
-        parent_lot = self.db.query(InventoryLot).filter(InventoryLot.lot_id == parent_lot_id).with_for_update(of=InventoryLot).first()
+        parent_lot = (
+            self.db.query(InventoryLot)
+            .filter(InventoryLot.lot_id == parent_lot_id)
+            .with_for_update(of=InventoryLot)
+            .first()
+        )
         if not parent_lot:
             raise HTTPException(status.HTTP_404_NOT_FOUND, "Parent Lot not found")
 
         if quantity_to_split <= 0 or quantity_to_split >= parent_lot.quantity_on_hand:
-             # Cannot split entire lot (that's just moving/receiving), must be partial
-             # Or handle full split as a move? Spec says "split_from_transaction_id".
-             # Usually split implies creating a new container for part of the stock.
-             raise HTTPException(
-                 status.HTTP_400_BAD_REQUEST, 
-                 "Split quantity must be greater than 0 and less than current on-hand."
-             )
+            # Cannot split entire lot (that's just moving/receiving), must be partial
+            # Or handle full split as a move? Spec says "split_from_transaction_id".
+            # Usually split implies creating a new container for part of the stock.
+            raise HTTPException(
+                status.HTTP_400_BAD_REQUEST,
+                "Split quantity must be greater than 0 and less than current on-hand.",
+            )
 
         import uuid
-        
+
         # Create Child Lot
         internal_barcode = f"INT-{uuid.uuid4().hex[:12].upper()}"
         internal_lot_number = f"SPLIT-{datetime.now().strftime('%Y%m%d%H%M%S')}-{uuid.uuid4().hex[:6].upper()}"
-        
+
         child_lot = InventoryLot(
             internal_sku=parent_lot.internal_sku,
             internal_barcode=internal_barcode,
@@ -112,7 +122,7 @@ class AdjustmentService:
             quantity_on_hand=quantity_to_split,
             quantity_reserved=0,
             unit=parent_lot.unit,
-            location_id=parent_lot.location_id, # Inherits location initially
+            location_id=parent_lot.location_id,  # Inherits location initially
             manufacture_date=parent_lot.manufacture_date,
             receive_date=parent_lot.receive_date,
             expiry_date=parent_lot.expiry_date,
@@ -128,7 +138,7 @@ class AdjustmentService:
         )
 
         self.db.add(child_lot)
-        self.db.flush() # Get child ID
+        self.db.flush()  # Get child ID
 
         # Update Parent Lot Quantity
         old_parent_qty = parent_lot.quantity_on_hand
@@ -137,7 +147,7 @@ class AdjustmentService:
         parent_lot.updated_at = utcnow()
 
         # Write Transactions
-        
+
         # 1. SPLIT transaction for the Child (Positive change into existence)
         split_tx_child = InventoryTransaction(
             transaction_type="SPLIT",
@@ -151,10 +161,10 @@ class AdjustmentService:
             notes=f"Split from {parent_lot.internal_lot_number}",
             created_at=utcnow(),
         )
-        
+
         # 2. ADJUST/SPLIT transaction for the Parent (Negative change)
-        # Spec says "writes ADJUST / SPLIT transactions". 
-        # We'll use SPLIT type for both sides to link them logically if needed, 
+        # Spec says "writes ADJUST / SPLIT transactions".
+        # We'll use SPLIT type for both sides to link them logically if needed,
         # or ADJUST for the reduction. Let's use SPLIT for consistency in audit trail of splits.
         split_tx_parent = InventoryTransaction(
             transaction_type="SPLIT",

@@ -7,6 +7,7 @@
     python tests/test_fifo_performance.py
     # 或: pytest -s tests/test_fifo_performance.py
 """
+
 import os
 import sys
 import time
@@ -29,17 +30,31 @@ SKU = "IC-PERF-TEST"
 SO_NUMBER = "SO-PERF-TEST"
 N_LOTS = 1000
 QTY_PER_LOT = 100
-ORDER_QTY = 5000          # 需要前 50 個最舊批次
+ORDER_QTY = 5000  # 需要前 50 個最舊批次
 TIME_LIMIT_S = 1.0
 
 
 def _cleanup(db):
-    so_ids = [r[0] for r in db.query(SalesOrder.so_id)
-              .filter(SalesOrder.so_number == SO_NUMBER).all()]
-    line_ids = [r[0] for r in db.query(SOLine.so_line_id)
-                .filter(SOLine.so_id.in_(so_ids)).all()] if so_ids else []
-    lot_ids = [r[0] for r in db.query(InventoryLot.lot_id)
-               .filter(InventoryLot.internal_sku == SKU).all()]
+    so_ids = [
+        r[0]
+        for r in db.query(SalesOrder.so_id)
+        .filter(SalesOrder.so_number == SO_NUMBER)
+        .all()
+    ]
+    line_ids = (
+        [
+            r[0]
+            for r in db.query(SOLine.so_line_id).filter(SOLine.so_id.in_(so_ids)).all()
+        ]
+        if so_ids
+        else []
+    )
+    lot_ids = [
+        r[0]
+        for r in db.query(InventoryLot.lot_id)
+        .filter(InventoryLot.internal_sku == SKU)
+        .all()
+    ]
 
     if line_ids or lot_ids:
         db.query(PickTask).filter(
@@ -47,19 +62,31 @@ def _cleanup(db):
         ).delete(synchronize_session=False)
     if lot_ids:
         db.query(InventoryTransaction).filter(
-            InventoryTransaction.lot_id.in_(lot_ids)).delete(synchronize_session=False)
-        db.query(InventoryLot).filter(
-            InventoryLot.lot_id.in_(lot_ids)).delete(synchronize_session=False)
+            InventoryTransaction.lot_id.in_(lot_ids)
+        ).delete(synchronize_session=False)
+        db.query(InventoryLot).filter(InventoryLot.lot_id.in_(lot_ids)).delete(
+            synchronize_session=False
+        )
     if so_ids:
-        db.query(SOLine).filter(SOLine.so_id.in_(so_ids)).delete(synchronize_session=False)
-        db.query(SalesOrder).filter(SalesOrder.so_id.in_(so_ids)).delete(synchronize_session=False)
+        db.query(SOLine).filter(SOLine.so_id.in_(so_ids)).delete(
+            synchronize_session=False
+        )
+        db.query(SalesOrder).filter(SalesOrder.so_id.in_(so_ids)).delete(
+            synchronize_session=False
+        )
     db.commit()
 
 
 def _seed(db):
     if not db.query(Item).filter(Item.internal_sku == SKU).first():
-        db.add(Item(internal_sku=SKU, item_type="IC", description="Perf test IC",
-                    base_unit="PCS"))
+        db.add(
+            Item(
+                internal_sku=SKU,
+                item_type="IC",
+                description="Perf test IC",
+                base_unit="PCS",
+            )
+        )
         db.commit()
 
     base = utcnow()
@@ -80,11 +107,17 @@ def _seed(db):
     db.add_all(lots)
     db.commit()
 
-    so = SalesOrder(so_number=SO_NUMBER, order_date=date.today(),
-                    status="OPEN", lot_selection_rule="FIFO")
+    so = SalesOrder(
+        so_number=SO_NUMBER,
+        order_date=date.today(),
+        status="OPEN",
+        lot_selection_rule="FIFO",
+    )
     db.add(so)
     db.flush()
-    db.add(SOLine(so_id=so.so_id, line_number=1, internal_sku=SKU, ordered_qty=ORDER_QTY))
+    db.add(
+        SOLine(so_id=so.so_id, line_number=1, internal_sku=SKU, ordered_qty=ORDER_QTY)
+    )
     db.commit()
 
 
@@ -100,7 +133,9 @@ def test_large_inventory_fifo():
         elapsed = time.time() - start
 
         # 性能:1 秒內
-        assert elapsed < TIME_LIMIT_S, f"FIFO 配貨耗時 {elapsed:.2f}s,超過 {TIME_LIMIT_S}s 限制"
+        assert (
+            elapsed < TIME_LIMIT_S
+        ), f"FIFO 配貨耗時 {elapsed:.2f}s,超過 {TIME_LIMIT_S}s 限制"
 
         # 正確性:配滿 5000
         assert result["allocatedQty"] == ORDER_QTY, result["allocatedQty"]
@@ -109,11 +144,14 @@ def test_large_inventory_fifo():
         details = result["details"]
         assert len(details) == ORDER_QTY // QTY_PER_LOT
         for i, d in enumerate(details):
-            assert d["internalLotNumber"] == f"LOT-PERF-{i:04d}", \
-                f"第 {i} 批應為 LOT-PERF-{i:04d},實際 {d['internalLotNumber']}"
+            assert (
+                d["internalLotNumber"] == f"LOT-PERF-{i:04d}"
+            ), f"第 {i} 批應為 LOT-PERF-{i:04d},實際 {d['internalLotNumber']}"
             assert d["qty"] == QTY_PER_LOT
 
-        print(f"\n   1000 lots / allocate 5000 pcs: {elapsed*1000:.0f} ms (限制 {TIME_LIMIT_S}s)")
+        print(
+            f"\n   1000 lots / allocate 5000 pcs: {elapsed*1000:.0f} ms (限制 {TIME_LIMIT_S}s)"
+        )
     finally:
         _cleanup(db)
         db.close()

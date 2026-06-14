@@ -60,6 +60,7 @@ def require_role(*roles: str):
         A dependency that checks the current user's role against allowed roles.
         Raises 403 if insufficient permissions.
     """
+
     def _check_role(current_user: dict = Depends(get_current_user)):
         if current_user["role"] not in roles:
             raise HTTPException(

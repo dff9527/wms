@@ -9,7 +9,7 @@ from fastapi import HTTPException, status
 from sqlalchemy.orm import Session
 
 from app.core.warehouse.putaway import PutAwayEngine
-from app.models.inventory import InventoryLot, InventoryTransaction      # type: ignore
+from app.models.inventory import InventoryLot, InventoryTransaction  # type: ignore
 from app.models.order import PurchaseOrder, POLine
 from app.models.vendor import VendorItem
 from app.models.storage import StorageLocation
@@ -65,7 +65,9 @@ class ReceivingService:
         # Resolve internal SKU from the vendor part number via the AVL (vendor_items)
         mapping = (
             self.db.query(VendorItem)
-            .filter(VendorItem.vendor_id == vendor_id, VendorItem.vendor_pn == vendor_pn)
+            .filter(
+                VendorItem.vendor_id == vendor_id, VendorItem.vendor_pn == vendor_pn
+            )
             .first()
         )
         if not mapping or not mapping.internal_sku:
@@ -83,26 +85,28 @@ class ReceivingService:
             )
 
         # FIX: fix_3 — add SELECT FOR UPDATE lock to prevent concurrent receipt race conditions
-        po = self.db.query(PurchaseOrder).filter(PurchaseOrder.po_number == po_number).with_for_update().first()
+        po = (
+            self.db.query(PurchaseOrder)
+            .filter(PurchaseOrder.po_number == po_number)
+            .with_for_update()
+            .first()
+        )
         if po is None:
             raise HTTPException(
                 status_code=status.HTTP_400_BAD_REQUEST,
-                detail=f'採購單不存在: {po_number}',
+                detail=f"採購單不存在: {po_number}",
             )
-        if po.status in ('CLOSED', 'CANCELLED'):
+        if po.status in ("CLOSED", "CANCELLED"):
             raise HTTPException(
                 status_code=status.HTTP_400_BAD_REQUEST,
-                detail=f'採購單狀態不可收貨: {po.status}',
+                detail=f"採購單狀態不可收貨: {po.status}",
             )
 
         # Find matching po_line
-        line_query = (
-            self.db.query(POLine)
-            .filter(
-                POLine.po_id == po.po_id,
-                POLine.internal_sku == internal_sku,
-                POLine.received_qty < POLine.ordered_qty,
-            )
+        line_query = self.db.query(POLine).filter(
+            POLine.po_id == po.po_id,
+            POLine.internal_sku == internal_sku,
+            POLine.received_qty < POLine.ordered_qty,
         )
         # If vendor_pn is present/non-empty, also require match on vendor_pn
         if vendor_pn:
@@ -112,24 +116,33 @@ class ReceivingService:
         if not matched_line:
             raise HTTPException(
                 status_code=status.HTTP_400_BAD_REQUEST,
-                detail=f'找不到符合的採購單明細 (sku={internal_sku}, po={po_number})',
+                detail=f"找不到符合的採購單明細 (sku={internal_sku}, po={po_number})",
             )
 
         # 2.5 MSL → 到期日(讓 FEFO 有依據)
         from app.models.item import Item
+
         item_row = self.db.query(Item).filter(Item.internal_sku == internal_sku).first()
         expiry_date = None
-        if item_row and item_row.msl_level and item_row.msl_level in MSL_SEALED_SHELF_LIFE_DAYS:
-            expiry_date = (utcnow() + timedelta(
-                days=MSL_SEALED_SHELF_LIFE_DAYS[item_row.msl_level])).date()
+        if (
+            item_row
+            and item_row.msl_level
+            and item_row.msl_level in MSL_SEALED_SHELF_LIFE_DAYS
+        ):
+            expiry_date = (
+                utcnow()
+                + timedelta(days=MSL_SEALED_SHELF_LIFE_DAYS[item_row.msl_level])
+            ).date()
 
         # 3. Generate Unique Identifiers
         internal_barcode = f"INT-{uuid.uuid4().hex[:12].upper()}"
         internal_lot_number = f"LOT-{datetime.now().strftime('%Y%m%d%H%M%S')}-{uuid.uuid4().hex[:6].upper()}"
 
-        existing = self.db.query(InventoryLot).filter(
-            InventoryLot.internal_barcode == internal_barcode
-        ).first()
+        existing = (
+            self.db.query(InventoryLot)
+            .filter(InventoryLot.internal_barcode == internal_barcode)
+            .first()
+        )
         if existing:
             # Collision retry logic would go here
             pass
@@ -156,7 +169,7 @@ class ReceivingService:
         )
 
         self.db.add(new_lot)
-        self.db.flush()     # Get ID before commit
+        self.db.flush()  # Get ID before commit
 
         # 5. Write RECEIVE Transaction
         transaction = InventoryTransaction(
@@ -179,27 +192,23 @@ class ReceivingService:
         if new_received_qty > matched_line.ordered_qty:
             raise HTTPException(
                 status_code=status.HTTP_400_BAD_REQUEST,
-                detail='收貨數量超過採購單剩餘數量',
+                detail="收貨數量超過採購單剩餘數量",
             )
         matched_line.received_qty = new_received_qty
 
         # Re-evaluate PO status before commit
-        all_lines = (
-            self.db.query(POLine)
-            .filter(POLine.po_id == po.po_id)
-            .all()
-        )
+        all_lines = self.db.query(POLine).filter(POLine.po_id == po.po_id).all()
         if all(line.received_qty >= line.ordered_qty for line in all_lines):
-            po.status = 'CLOSED'
+            po.status = "CLOSED"
         else:
-            po.status = 'PARTIAL'
+            po.status = "PARTIAL"
 
         try:
             self.db.commit()
             self.db.refresh(new_lot)
         except Exception as e:
             # FIX: fix_4 — log exception server-side and return generic message to client
-            logger.exception('process_receipt failed')
+            logger.exception("process_receipt failed")
             self.db.rollback()
             raise HTTPException(
                 status_code=status.HTTP_400_BAD_REQUEST,
@@ -217,7 +226,7 @@ class ReceivingService:
     def complete_iqc(
         self,
         lot_id: int,
-        result: str,     # 'PASS' or 'FAIL'
+        result: str,  # 'PASS' or 'FAIL'
         inspector: str,
         notes: Optional[str] = None,
     ) -> dict:
@@ -260,9 +269,11 @@ class ReceivingService:
         # 強制換標:供應商要求 relabel 時,須先列印內部標籤才能 IQC PASS 上架
         if result == "PASS":
             from app.models.vendor import Vendor
+
             vendor_row = (
                 self.db.query(Vendor).filter(Vendor.vendor_id == lot.vendor_id).first()
-                if lot.vendor_id else None
+                if lot.vendor_id
+                else None
             )
             if vendor_row and vendor_row.requires_relabeling:
                 label_printed = (lot.raw_scan_data or {}).get("label_printed_at")
@@ -293,9 +304,11 @@ class ReceivingService:
                 )
                 self.db.add(put_away_transaction)
 
-                loc_row = self.db.query(StorageLocation).filter(
-                    StorageLocation.location_id == suggested_id
-                ).first()
+                loc_row = (
+                    self.db.query(StorageLocation)
+                    .filter(StorageLocation.location_id == suggested_id)
+                    .first()
+                )
                 suggested_location_code = loc_row.location_code if loc_row else None
         else:
             lot.lot_status = "QUARANTINE"
@@ -328,7 +341,10 @@ class ReceivingService:
         lot = self.db.query(InventoryLot).filter(InventoryLot.lot_id == lot_id).first()
         if not lot:
             return
-        lot.raw_scan_data = {**(lot.raw_scan_data or {}), "label_printed_at": utcnow().isoformat()}
+        lot.raw_scan_data = {
+            **(lot.raw_scan_data or {}),
+            "label_printed_at": utcnow().isoformat(),
+        }
         lot.updated_at = utcnow()
         self.db.commit()
 
@@ -336,6 +352,7 @@ class ReceivingService:
     def scan_barcode(self, barcode: str, vendor_id: int):
         """Parse a barcode without creating any rows. Returns a ParseResult."""
         from app.services.barcode_service import parse_barcode
+
         result = parse_barcode(self.db, barcode, vendor_id)
         if result is None:
             raise ValueError("Invalid or unrecognized barcode for this vendor.")
@@ -346,30 +363,52 @@ class ReceivingService:
         po_number has no column on inventory_lots (only the RECEIVE transaction
         records it), so it is exposed as None here."""
         from types import SimpleNamespace
+
         return SimpleNamespace(
-            lot_id=lot.lot_id, po_number=None, vendor_name=vendor_name,
-            internal_sku=lot.internal_sku, internal_lot_number=lot.internal_lot_number,
-            internal_barcode=lot.internal_barcode, vendor_pn=lot.vendor_pn,
-            vendor_lot_code=lot.vendor_lot_code, vendor_date_code=lot.vendor_date_code,
-            original_barcode=lot.original_barcode, description=description,
-            quantity_on_hand=lot.quantity_on_hand, unit=lot.unit, lot_status=lot.lot_status,
-            receive_date=lot.receive_date, location_code=location_code,
-            iqc_result=lot.iqc_result, iqc_date=lot.iqc_date,
-            iqc_inspector=lot.iqc_inspector, quality_notes=lot.quality_notes,
+            lot_id=lot.lot_id,
+            po_number=None,
+            vendor_name=vendor_name,
+            internal_sku=lot.internal_sku,
+            internal_lot_number=lot.internal_lot_number,
+            internal_barcode=lot.internal_barcode,
+            vendor_pn=lot.vendor_pn,
+            vendor_lot_code=lot.vendor_lot_code,
+            vendor_date_code=lot.vendor_date_code,
+            original_barcode=lot.original_barcode,
+            description=description,
+            quantity_on_hand=lot.quantity_on_hand,
+            unit=lot.unit,
+            lot_status=lot.lot_status,
+            receive_date=lot.receive_date,
+            location_code=location_code,
+            iqc_result=lot.iqc_result,
+            iqc_date=lot.iqc_date,
+            iqc_inspector=lot.iqc_inspector,
+            quality_notes=lot.quality_notes,
         )
 
     def _lot_query(self):
         from app.models.item import Item
         from app.models.vendor import Vendor
         from app.models.warehouse import StorageLocation
+
         return (
-            self.db.query(InventoryLot, Vendor.vendor_name, Item.description, StorageLocation.location_code)
+            self.db.query(
+                InventoryLot,
+                Vendor.vendor_name,
+                Item.description,
+                StorageLocation.location_code,
+            )
             .outerjoin(Vendor, InventoryLot.vendor_id == Vendor.vendor_id)
             .outerjoin(Item, InventoryLot.internal_sku == Item.internal_sku)
-            .outerjoin(StorageLocation, InventoryLot.location_id == StorageLocation.location_id)
+            .outerjoin(
+                StorageLocation, InventoryLot.location_id == StorageLocation.location_id
+            )
         )
 
-    def list_pending(self, po_number: Optional[str] = None, status: Optional[str] = None):
+    def list_pending(
+        self, po_number: Optional[str] = None, status: Optional[str] = None
+    ):
         q = self._lot_query()
         if status:
             q = q.filter(InventoryLot.lot_status == status)

@@ -93,9 +93,13 @@ def create_po(
     po_number = str(po_number).strip()
 
     # Validate poNumber not duplicate
-    existing = db.query(PurchaseOrder).filter(PurchaseOrder.po_number == po_number).first()
+    existing = (
+        db.query(PurchaseOrder).filter(PurchaseOrder.po_number == po_number).first()
+    )
     if existing:
-        raise HTTPException(status_code=409, detail=f"PO number '{po_number}' already exists")
+        raise HTTPException(
+            status_code=409, detail=f"PO number '{po_number}' already exists"
+        )
 
     # Validate vendorId exists
     vendor = db.query(Vendor).filter(Vendor.vendor_id == vendor_id).first()
@@ -111,7 +115,9 @@ def create_po(
     for line in lines:
         ordered_qty = line.get("orderedQty")
         if ordered_qty is None or ordered_qty <= 0:
-            raise HTTPException(status_code=400, detail="orderedQty must be greater than 0")
+            raise HTTPException(
+                status_code=400, detail="orderedQty must be greater than 0"
+            )
         internal_sku = line.get("internalSku")
         if internal_sku:
             internal_skus.append(internal_sku)
@@ -125,8 +131,7 @@ def create_po(
                 missing_skus.append(sku)
         if missing_skus:
             raise HTTPException(
-                status_code=400,
-                detail=f"SKU(s) not found: {', '.join(missing_skus)}"
+                status_code=400, detail=f"SKU(s) not found: {', '.join(missing_skus)}"
             )
 
     # Create PO
@@ -176,11 +181,17 @@ def create_po(
     }
 
 
-#独立 router: GET /api/v1/items for dropdown (SO/PO form item selector)
+# 独立 router: GET /api/v1/items for dropdown (SO/PO form item selector)
 @router.get("/items")
 def list_items(db: Session = Depends(get_db)):
     """List items for dropdowns, limit 500."""
-    items = db.query(Item).filter(Item.is_active.is_(True)).order_by(Item.internal_sku).limit(500).all()
+    items = (
+        db.query(Item)
+        .filter(Item.is_active.is_(True))
+        .order_by(Item.internal_sku)
+        .limit(500)
+        .all()
+    )
     return [
         {
             "internalSku": item.internal_sku,

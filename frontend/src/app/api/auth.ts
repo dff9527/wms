@@ -23,6 +23,11 @@ export function getCurrentUser(): UserInfo | null {
   return currentUser;
 }
 
+// Get current user's role
+export function getRole(): string {
+  return currentUser?.role ?? '';
+}
+
 // Clear current user info
 function clearCurrentUser() {
   currentUser = null;
@@ -34,18 +39,18 @@ export async function login(username: string, password: string): Promise<void> {
     username,
     password,
   });
-  
+
   const token = response.data.access_token;
   const tokenType = response.data.token_type || 'bearer';
-  
+
   // Store token in localStorage
   localStorage.setItem(TOKEN_KEY, token);
-  
+
   // Set axios default header
   axios.defaults.headers.common['Authorization'] = `${tokenType} ${token}`;
-  
-  // Store user info (from token payload, we'll just use username for now)
-  currentUser = { username };
+
+  // Store user info (fetch from backend to get full details including role)
+  await fetchCurrentUser();
 }
 
 // Logout function - clear localStorage and axios default header
@@ -58,7 +63,7 @@ export function logout(): void {
 // Initialize auth on app startup - restore token from localStorage
 export function initAuth(): boolean {
   const token = localStorage.getItem(TOKEN_KEY);
-  
+
   if (token) {
     axios.defaults.headers.common['Authorization'] = `Bearer ${token}`;
     return true;

@@ -7,7 +7,14 @@ import PickingModule from './components/PickingModule';
 import TraceabilityModule from './components/TraceabilityModule';
 import DashboardModule from './components/DashboardModule';
 import BarcodeRuleModule from './components/BarcodeRuleModule';
-import { login, logout, initAuth, setupAuthInterceptor, removeAuthInterceptor, fetchCurrentUser } from './api/auth';
+import {
+  login,
+  logout,
+  initAuth,
+  setupAuthInterceptor,
+  removeAuthInterceptor,
+  fetchCurrentUser,
+} from './api/auth';
 
 export default function App() {
   const [activeTab, setActiveTab] = useState('dashboard');
@@ -38,22 +45,22 @@ export default function App() {
 
       setIsLoading(false);
     };
-    
+
     setupAuth();
   }, []);
 
   // Setup 401 interceptor
   useEffect(() => {
     if (!isAuthenticated) return;
-    
+
     const handleUnauthorized = () => {
       setIsAuthenticated(false);
       setLoginError('您的登入已過期，請重新登入。');
       setLoginForm({ username: '', password: '' });
     };
-    
+
     const interceptorId = setupAuthInterceptor(handleUnauthorized);
-    
+
     return () => {
       removeAuthInterceptor(interceptorId);
     };
@@ -63,7 +70,7 @@ export default function App() {
   const handleLogin = async (e: React.FormEvent) => {
     e.preventDefault();
     setLoginError('');
-    
+
     try {
       await login(loginForm.username, loginForm.password);
       setIsAuthenticated(true);
@@ -96,14 +103,14 @@ export default function App() {
               <p className="text-sm text-slate-500">Semiconductor Warehouse Management System</p>
             </div>
           </div>
-          
+
           <form onSubmit={handleLogin} className="space-y-4">
             {loginError && (
               <div className="bg-red-50 border border-red-200 text-red-700 px-4 py-3 rounded-lg text-sm">
                 {loginError}
               </div>
             )}
-            
+
             <div>
               <label className="block text-sm font-medium text-slate-700 mb-1">帳號</label>
               <input
@@ -115,7 +122,7 @@ export default function App() {
                 required
               />
             </div>
-            
+
             <div>
               <label className="block text-sm font-medium text-slate-700 mb-1">密碼</label>
               <input
@@ -127,7 +134,7 @@ export default function App() {
                 required
               />
             </div>
-            
+
             <button
               type="submit"
               disabled={isLoading}
@@ -136,7 +143,7 @@ export default function App() {
               {isLoading ? '登入中...' : '登入'}
             </button>
           </form>
-          
+
           <div className="mt-6 text-center text-xs text-slate-400">
             <p>請使用系統分配的帳號密碼登入</p>
           </div>
@@ -213,8 +220,8 @@ export default function App() {
               <Search className="size-4" />
               追溯管理
             </TabsTrigger>
-            <TabsTrigger 
-              value="barcode-rules" 
+            <TabsTrigger
+              value="barcode-rules"
               className="flex items-center gap-2 px-4 py-3 text-sm font-medium text-slate-600 hover:text-slate-900 border-b-2 border-transparent data-[state=active]:border-blue-600 data-[state=active]:text-blue-600 transition-colors"
             >
               <ScanLine className="size-4" />
@@ -239,7 +246,9 @@ export default function App() {
           <TabsContent value="traceability" className="size-full p-0">
             <TraceabilityModule />
           </TabsContent>
-          <TabsContent value="barcode-rules" className="size-full p-0"><BarcodeRuleModule /></TabsContent>
+          <TabsContent value="barcode-rules" className="size-full p-0">
+            <BarcodeRuleModule />
+          </TabsContent>
         </div>
       </Tabs>
     </div>

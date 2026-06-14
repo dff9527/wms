@@ -17,6 +17,7 @@
   1. 手動:POST /api/v1/barcodes/patterns(regex 會先驗證能否 compile)
   2. AI 學習:POST /api/v1/barcodes/learn(拿實際掃到的 3-5 個條碼樣本,需 CLAUDE_API_KEY)
 """
+
 import os
 import sys
 

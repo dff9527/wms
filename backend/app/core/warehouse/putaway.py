@@ -2,7 +2,7 @@ from typing import Optional, Dict, Tuple
 from sqlalchemy.orm import Session
 from sqlalchemy import func
 
-from app.models.inventory import InventoryLot    # type: ignore
+from app.models.inventory import InventoryLot  # type: ignore
 from app.models.item import Item
 from app.models.warehouse import StorageLocation, Warehouse
 
@@ -31,15 +31,13 @@ class PutAwayEngine:
         self.db = db
 
     def suggest_location_id(self, lot: InventoryLot) -> Optional[int]:
-        item = (
-            self.db.query(Item)
-            .filter(Item.internal_sku == lot.internal_sku)
-            .first()
-        )
+        item = self.db.query(Item).filter(Item.internal_sku == lot.internal_sku).first()
 
         rows = (
             self.db.query(StorageLocation, Warehouse)
-            .outerjoin(Warehouse, StorageLocation.warehouse_id == Warehouse.warehouse_id)
+            .outerjoin(
+                Warehouse, StorageLocation.warehouse_id == Warehouse.warehouse_id
+            )
             .filter(StorageLocation.is_quarantine == False)  # noqa: E712
             .all()
         )
@@ -66,12 +64,17 @@ class PutAwayEngine:
             # MSL 上限:儲位有限制時,料件 MSL 等級不可超過
             if (
                 loc.msl_level is not None
-                and item and item.msl_level
+                and item
+                and item.msl_level
                 and item.msl_level > loc.msl_level
             ):
                 continue
             # 料件類型白名單
-            if loc.allowed_item_types and item and item.item_type not in loc.allowed_item_types:
+            if (
+                loc.allowed_item_types
+                and item
+                and item.item_type not in loc.allowed_item_types
+            ):
                 continue
 
             score = self._TYPE_SCORE.get(loc.location_type or "", 0)

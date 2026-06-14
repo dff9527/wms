@@ -20,12 +20,12 @@ class PatternInferenceEngine:
     ) -> Dict:
         """
         從範例推斷 Regex 規則
-        
+
         Args:
             barcode_samples: 至少 3-5 個同供應商的條碼範例
             vendor_name: 供應商名稱
             manual_labels: 人工標註的欄位 (可選)
-        
+
         Returns:
              {
                  "regex_rule": "...",
@@ -93,4 +93,3 @@ class PatternInferenceEngine:
             if json_match:
                 return json.loads(json_match.group())
             raise ValueError(f"無法解析 Claude 回應")
-

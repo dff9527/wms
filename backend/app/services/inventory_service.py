@@ -18,15 +18,16 @@ class InventoryService:
         Query lots with filters. Default excludes SHIPPED/EXPIRED.
         """
         excluded_statuses = query_params.get_excluded_statuses()
-        
-        stmt = (
-            self.db.query(InventoryLot, StorageLocation.location_code.label("location_code"))
-            .outerjoin(StorageLocation, InventoryLot.location_id == StorageLocation.location_id)
+
+        stmt = self.db.query(
+            InventoryLot, StorageLocation.location_code.label("location_code")
+        ).outerjoin(
+            StorageLocation, InventoryLot.location_id == StorageLocation.location_id
         )
 
         if query_params.sku:
             stmt = stmt.filter(InventoryLot.internal_sku.ilike(f"%{query_params.sku}%"))
-            
+
         if query_params.status:
             stmt = stmt.filter(InventoryLot.lot_status.in_(query_params.status))
         else:
@@ -34,32 +35,42 @@ class InventoryService:
                 stmt = stmt.filter(~InventoryLot.lot_status.in_(excluded_statuses))
 
         if query_params.location:
-             stmt = stmt.filter(StorageLocation.location_code.ilike(f"%{query_params.location}%"))
+            stmt = stmt.filter(
+                StorageLocation.location_code.ilike(f"%{query_params.location}%")
+            )
 
         if query_params.vendor:
             stmt = stmt.filter(InventoryLot.vendor_id == query_params.vendor)
 
         results = stmt.all()
-        
+
         # Map to Pydantic models
         lots_out = []
         for lot, loc_code in results:
-            lots_out.append(LotOut.model_validate(lot).model_copy(update={"location_code": loc_code}))
-            
+            lots_out.append(
+                LotOut.model_validate(lot).model_copy(
+                    update={"location_code": loc_code}
+                )
+            )
+
         return lots_out
 
     def get_lot_detail(self, lot_id: int) -> Optional[LotOut]:
         """Get detailed info for a single lot."""
         result = (
-            self.db.query(InventoryLot, StorageLocation.location_code.label("location_code"))
-            .outerjoin(StorageLocation, InventoryLot.location_id == StorageLocation.location_id)
+            self.db.query(
+                InventoryLot, StorageLocation.location_code.label("location_code")
+            )
+            .outerjoin(
+                StorageLocation, InventoryLot.location_id == StorageLocation.location_id
+            )
             .filter(InventoryLot.lot_id == lot_id)
             .first()
         )
-        
+
         if not result:
             return None
-            
+
         lot, loc_code = result
         out = LotOut.model_validate(lot)
         out.location_code = loc_code
@@ -81,4 +92,3 @@ class InventoryService:
             quantity_to_split=request_data["quantityToSplit"],
             executed_by=executed_by,
         )
-

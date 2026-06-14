@@ -28,13 +28,13 @@ def scan_parse(req: ScanRequest, db: Session = Depends(get_db)):
     Returns 422 if no pattern matches.
     """
     result = parse_barcode(db, req.barcode, req.vendor_id)
-    
+
     if result is None:
         raise HTTPException(
-            status_code=422, 
-            detail=f"No matching barcode pattern found for vendor {req.vendor_id}"
+            status_code=422,
+            detail=f"No matching barcode pattern found for vendor {req.vendor_id}",
         )
-        
+
     return result
 
 
@@ -88,4 +88,3 @@ def toggle_pattern(
         return set_pattern_active(db, pattern_id, req.is_active)
     except ValueError as e:
         raise HTTPException(status_code=404, detail=str(e))
-

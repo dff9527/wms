@@ -5,7 +5,7 @@
  */
 export function printHtml(title: string, bodyHtml: string): void {
   const printWindow = window.open('', '_blank');
-  
+
   if (!printWindow) {
     console.error('Failed to open print window - popup blocked?');
     return;

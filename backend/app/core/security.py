@@ -22,9 +22,13 @@ def verify_password(plain_password: str, hashed_password: str) -> bool:
     return pwd_context.verify(plain_password, hashed_password)
 
 
-def create_access_token(sub: str, role: str, expires_delta: Optional[timedelta] = None) -> str:
+def create_access_token(
+    sub: str, role: str, expires_delta: Optional[timedelta] = None
+) -> str:
     """Create a JWT access token with sub and role claims."""
-    expire = datetime.now(timezone.utc) + (expires_delta or timedelta(minutes=ACCESS_TOKEN_EXPIRE_MINUTES))
+    expire = datetime.now(timezone.utc) + (
+        expires_delta or timedelta(minutes=ACCESS_TOKEN_EXPIRE_MINUTES)
+    )
     to_encode = {"exp": expire, "sub": sub, "role": role}
     encoded_jwt = jwt.encode(to_encode, settings.SECRET_KEY, algorithm=ALGORITHM)
     return encoded_jwt

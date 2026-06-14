@@ -7,6 +7,7 @@
 
 使用獨立 SKU (IC-FIFO-TEST) 與 SO 編號,執行前後自動清理,不影響其他資料。
 """
+
 import os
 import sys
 from datetime import date, timedelta
@@ -29,12 +30,26 @@ SO_NUMBERS = ("SO-FIFO-TEST", "SO-FEFO-TEST")
 
 
 def _cleanup(db):
-    so_ids = [r[0] for r in db.query(SalesOrder.so_id)
-              .filter(SalesOrder.so_number.in_(SO_NUMBERS)).all()]
-    line_ids = [r[0] for r in db.query(SOLine.so_line_id)
-                .filter(SOLine.so_id.in_(so_ids)).all()] if so_ids else []
-    lot_ids = [r[0] for r in db.query(InventoryLot.lot_id)
-               .filter(InventoryLot.internal_sku == SKU).all()]
+    so_ids = [
+        r[0]
+        for r in db.query(SalesOrder.so_id)
+        .filter(SalesOrder.so_number.in_(SO_NUMBERS))
+        .all()
+    ]
+    line_ids = (
+        [
+            r[0]
+            for r in db.query(SOLine.so_line_id).filter(SOLine.so_id.in_(so_ids)).all()
+        ]
+        if so_ids
+        else []
+    )
+    lot_ids = [
+        r[0]
+        for r in db.query(InventoryLot.lot_id)
+        .filter(InventoryLot.internal_sku == SKU)
+        .all()
+    ]
 
     if line_ids or lot_ids:
         db.query(PickTask).filter(
@@ -42,12 +57,18 @@ def _cleanup(db):
         ).delete(synchronize_session=False)
     if lot_ids:
         db.query(InventoryTransaction).filter(
-            InventoryTransaction.lot_id.in_(lot_ids)).delete(synchronize_session=False)
-        db.query(InventoryLot).filter(
-            InventoryLot.lot_id.in_(lot_ids)).delete(synchronize_session=False)
+            InventoryTransaction.lot_id.in_(lot_ids)
+        ).delete(synchronize_session=False)
+        db.query(InventoryLot).filter(InventoryLot.lot_id.in_(lot_ids)).delete(
+            synchronize_session=False
+        )
     if so_ids:
-        db.query(SOLine).filter(SOLine.so_id.in_(so_ids)).delete(synchronize_session=False)
-        db.query(SalesOrder).filter(SalesOrder.so_id.in_(so_ids)).delete(synchronize_session=False)
+        db.query(SOLine).filter(SOLine.so_id.in_(so_ids)).delete(
+            synchronize_session=False
+        )
+        db.query(SalesOrder).filter(SalesOrder.so_id.in_(so_ids)).delete(
+            synchronize_session=False
+        )
     db.commit()
 
 
@@ -66,11 +87,17 @@ def _make_lot(barcode, lot_number, qty, receive_days_ago, expiry_date=None):
 
 
 def _make_so(db, so_number, rule, ordered_qty):
-    so = SalesOrder(so_number=so_number, order_date=date.today(),
-                    status="OPEN", lot_selection_rule=rule)
+    so = SalesOrder(
+        so_number=so_number,
+        order_date=date.today(),
+        status="OPEN",
+        lot_selection_rule=rule,
+    )
     db.add(so)
     db.flush()
-    db.add(SOLine(so_id=so.so_id, line_number=1, internal_sku=SKU, ordered_qty=ordered_qty))
+    db.add(
+        SOLine(so_id=so.so_id, line_number=1, internal_sku=SKU, ordered_qty=ordered_qty)
+    )
     db.commit()
 
 
@@ -79,8 +106,14 @@ def db_session():
     db = SessionLocal()
     _cleanup(db)
     if not db.query(Item).filter(Item.internal_sku == SKU).first():
-        db.add(Item(internal_sku=SKU, item_type="IC", description="FIFO unit-test IC",
-                    base_unit="PCS"))
+        db.add(
+            Item(
+                internal_sku=SKU,
+                item_type="IC",
+                description="FIFO unit-test IC",
+                base_unit="PCS",
+            )
+        )
         db.commit()
     yield db
     _cleanup(db)
@@ -91,11 +124,13 @@ class TestFIFOPicking:
 
     def test_fifo_basic(self, db_session):
         """最早收貨優先;跨批次配貨;最新批次不動。"""
-        db_session.add_all([
-            _make_lot("INT-UT-OLD", "LOT-OLD", 1000, receive_days_ago=30),
-            _make_lot("INT-UT-MID", "LOT-MID", 1500, receive_days_ago=15),
-            _make_lot("INT-UT-NEW", "LOT-NEW", 2000, receive_days_ago=0),
-        ])
+        db_session.add_all(
+            [
+                _make_lot("INT-UT-OLD", "LOT-OLD", 1000, receive_days_ago=30),
+                _make_lot("INT-UT-MID", "LOT-MID", 1500, receive_days_ago=15),
+                _make_lot("INT-UT-NEW", "LOT-NEW", 2000, receive_days_ago=0),
+            ]
+        )
         db_session.commit()
         _make_so(db_session, "SO-FIFO-TEST", "FIFO", ordered_qty=1500)
 
@@ -111,12 +146,24 @@ class TestFIFOPicking:
 
     def test_fefo_with_expiry(self, db_session):
         """最早到期優先,即使它比較早收貨。"""
-        db_session.add_all([
-            _make_lot("INT-UT-SOON", "LOT-EXPIRE-SOON", 1000, receive_days_ago=30,
-                      expiry_date=date.today() + timedelta(days=10)),
-            _make_lot("INT-UT-LATER", "LOT-EXPIRE-LATER", 1000, receive_days_ago=20,
-                      expiry_date=date.today() + timedelta(days=100)),
-        ])
+        db_session.add_all(
+            [
+                _make_lot(
+                    "INT-UT-SOON",
+                    "LOT-EXPIRE-SOON",
+                    1000,
+                    receive_days_ago=30,
+                    expiry_date=date.today() + timedelta(days=10),
+                ),
+                _make_lot(
+                    "INT-UT-LATER",
+                    "LOT-EXPIRE-LATER",
+                    1000,
+                    receive_days_ago=20,
+                    expiry_date=date.today() + timedelta(days=100),
+                ),
+            ]
+        )
         db_session.commit()
         _make_so(db_session, "SO-FEFO-TEST", "FEFO", ordered_qty=500)
 
@@ -130,12 +177,24 @@ class TestFIFOPicking:
 
     def test_expired_lot_excluded(self, db_session):
         """已過期批次不可配出。"""
-        db_session.add_all([
-            _make_lot("INT-UT-EXP", "LOT-EXPIRED", 5000, receive_days_ago=400,
-                      expiry_date=date.today() - timedelta(days=1)),
-            _make_lot("INT-UT-OK", "LOT-OK", 1000, receive_days_ago=5,
-                      expiry_date=date.today() + timedelta(days=200)),
-        ])
+        db_session.add_all(
+            [
+                _make_lot(
+                    "INT-UT-EXP",
+                    "LOT-EXPIRED",
+                    5000,
+                    receive_days_ago=400,
+                    expiry_date=date.today() - timedelta(days=1),
+                ),
+                _make_lot(
+                    "INT-UT-OK",
+                    "LOT-OK",
+                    1000,
+                    receive_days_ago=5,
+                    expiry_date=date.today() + timedelta(days=200),
+                ),
+            ]
+        )
         db_session.commit()
         _make_so(db_session, "SO-FEFO-TEST", "FEFO", ordered_qty=500)
 
@@ -151,12 +210,22 @@ def main():
     """直接 python 執行時的簡易 runner(不依賴 pytest)。"""
     passed = failed = 0
     suite = TestFIFOPicking()
-    for name in ("test_fifo_basic", "test_fefo_with_expiry", "test_expired_lot_excluded"):
+    for name in (
+        "test_fifo_basic",
+        "test_fefo_with_expiry",
+        "test_expired_lot_excluded",
+    ):
         db = SessionLocal()
         _cleanup(db)
         if not db.query(Item).filter(Item.internal_sku == SKU).first():
-            db.add(Item(internal_sku=SKU, item_type="IC", description="FIFO unit-test IC",
-                        base_unit="PCS"))
+            db.add(
+                Item(
+                    internal_sku=SKU,
+                    item_type="IC",
+                    description="FIFO unit-test IC",
+                    base_unit="PCS",
+                )
+            )
             db.commit()
         try:
             getattr(suite, name)(db)
