@@ -504,7 +504,7 @@ export default function ReceivingModule() {
                   </div>
                 )}
 
-                {['admin','qc'].includes(getRole()) ? (
+                {['admin', 'qc'].includes(getRole()) ? (
                   <div className="pt-4 border-t border-slate-200">
                     <label className="block text-xs text-slate-600 mb-1">檢驗結果</label>
                     <select
@@ -793,7 +793,10 @@ export default function ReceivingModule() {
                       建立中...
                     </>
                   ) : (
-                    '送出'
+                    <>
+                      <Plus className="size-4" />
+                      送出
+                    </>
                   )}
                 </button>
               </div>

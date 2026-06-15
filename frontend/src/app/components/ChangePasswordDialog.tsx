@@ -1,5 +1,6 @@
 import { useState } from 'react';
 import axios from 'axios';
+import { KeyRound } from 'lucide-react';
 import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogFooter } from './ui/dialog';
 import { Button } from './ui/button';
 import { Input } from './ui/input';
@@ -133,7 +134,14 @@ export default function ChangePasswordDialog({ open, onClose }: Props) {
               取消
             </Button>
             <Button type="submit" disabled={loading}>
-              {loading ? '更新中...' : '更新密碼'}
+              {loading ? (
+                '更新中...'
+              ) : (
+                <>
+                  <KeyRound className="size-4" />
+                  更新密碼
+                </>
+              )}
             </Button>
           </DialogFooter>
         </form>

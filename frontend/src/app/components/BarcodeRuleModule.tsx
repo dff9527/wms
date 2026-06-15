@@ -138,7 +138,7 @@ export default function BarcodeRuleModule() {
     setCreateError(null);
     setCreateSuccess(false);
 
-    let parsedMapping: Record<string, string> = {};
+    let parsedMapping: Record<string, string>;
     try {
       parsedMapping = JSON.parse(newFieldMapping);
     } catch {
@@ -351,8 +351,8 @@ export default function BarcodeRuleModule() {
                       {pattern.priority}
                     </td>
                     <td className="px-6 py-4 whitespace-nowrap">
-                      <Badge variant={Boolean(pattern.is_active) ? 'success' : 'default'}>
-                        {Boolean(pattern.is_active) ? '啟用' : '停用'}
+                      <Badge variant={pattern.is_active ? 'success' : 'default'}>
+                        {pattern.is_active ? '啟用' : '停用'}
                       </Badge>
                     </td>
                     <td className="px-6 py-4 whitespace-nowrap text-right text-sm font-medium">
@@ -585,7 +585,10 @@ export default function BarcodeRuleModule() {
                   學習中...
                 </>
               ) : (
-                '學習並儲存'
+                <>
+                  <CheckCircle2 className="mr-2 h-4 w-4" />
+                  學習並儲存
+                </>
               )}
             </button>
 

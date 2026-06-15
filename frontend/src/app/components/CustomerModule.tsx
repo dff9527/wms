@@ -106,9 +106,7 @@ export default function CustomerModule() {
             <div className="animate-spin rounded-full h-8 w-8 border-b-2 border-blue-600"></div>
           </div>
         ) : customers.length === 0 ? (
-          <div className="bg-slate-50 rounded-lg p-8 text-center text-slate-500">
-            尚無客戶資料
-          </div>
+          <div className="bg-slate-50 rounded-lg p-8 text-center text-slate-500">尚無客戶資料</div>
         ) : (
           <div className="overflow-x-auto">
             <table className="w-full">
@@ -134,9 +132,7 @@ export default function CustomerModule() {
                     <td className="py-3 px-4 text-sm font-mono text-slate-900">
                       {customer.customer_code}
                     </td>
-                    <td className="py-3 px-4 text-sm text-slate-900">
-                      {customer.customer_name}
-                    </td>
+                    <td className="py-3 px-4 text-sm text-slate-900">{customer.customer_name}</td>
                     <td className="py-3 px-4 text-center">
                       {customer.is_active ? (
                         <span className="inline-flex items-center gap-1 px-2 py-1 rounded text-xs font-medium bg-green-100 text-green-700">
@@ -190,9 +186,7 @@ export default function CustomerModule() {
               )}
 
               <div>
-                <label className="block text-sm font-medium text-slate-700 mb-1">
-                  客戶代碼 *
-                </label>
+                <label className="block text-sm font-medium text-slate-700 mb-1">客戶代碼 *</label>
                 <input
                   type="text"
                   value={customerCode}
@@ -205,9 +199,7 @@ export default function CustomerModule() {
               </div>
 
               <div>
-                <label className="block text-sm font-medium text-slate-700 mb-1">
-                  客戶名稱 *
-                </label>
+                <label className="block text-sm font-medium text-slate-700 mb-1">客戶名稱 *</label>
                 <input
                   type="text"
                   value={customerName}
@@ -244,7 +236,10 @@ export default function CustomerModule() {
                     建立中...
                   </>
                 ) : (
-                  '建立客戶'
+                  <>
+                    <Plus className="size-4" />
+                    建立客戶
+                  </>
                 )}
               </button>
             </div>

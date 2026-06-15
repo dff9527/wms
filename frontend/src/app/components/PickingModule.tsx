@@ -1204,7 +1204,10 @@ export default function PickingModule() {
                           建立中...
                         </>
                       ) : (
-                        '確認新增'
+                        <>
+                          <Plus className="size-3" />
+                          確認新增
+                        </>
                       )}
                     </button>
                   </div>
@@ -1319,7 +1322,10 @@ export default function PickingModule() {
                     建立中...
                   </>
                 ) : (
-                  '建立訂單'
+                  <>
+                    <Plus className="size-4" />
+                    建立訂單
+                  </>
                 )}
               </button>
             </div>

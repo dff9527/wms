@@ -168,7 +168,7 @@ export function printHtml(title: string, bodyHtml: string): void {
             window.close();
           }, 1000);
         };
-      <\/script>
+      </script>
     </body>
     </html>
   `;
