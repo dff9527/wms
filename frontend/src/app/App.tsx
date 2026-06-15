@@ -1,6 +1,7 @@
 import { useState, useEffect, useCallback } from 'react';
 import { Tabs, TabsContent, TabsList, TabsTrigger } from '@radix-ui/react-tabs';
-import { Package, Warehouse, TruckIcon, Search, BarChart3, ScanLine, LogOut } from 'lucide-react';
+import { Package, Warehouse, TruckIcon, Search, BarChart3, ScanLine, LogOut, KeyRound } from 'lucide-react';
+import ChangePasswordDialog from './components/ChangePasswordDialog';
 import ReceivingModule from './components/ReceivingModule';
 import InventoryModule from './components/InventoryModule';
 import PickingModule from './components/PickingModule';
@@ -25,6 +26,7 @@ export default function App() {
   const [username, setUsername] = useState('');
   const [loginForm, setLoginForm] = useState({ username: '', password: '' });
   const [loginError, setLoginError] = useState('');
+  const [showPwDialog, setShowPwDialog] = useState(false);
 
   // Initialize auth on mount
   useEffect(() => {
@@ -175,6 +177,14 @@ export default function App() {
               <p className="text-sm font-medium text-slate-700">操作員: {username}{roleLabel ? `(${roleLabel})` : ''}</p>
             </div>
             <button
+              onClick={() => setShowPwDialog(true)}
+              className="flex items-center gap-2 px-4 py-2 text-sm font-medium text-slate-600 hover:text-amber-600 hover:bg-amber-50 rounded-lg transition-colors"
+              title="修改密碼"
+            >
+              <KeyRound className="size-4" />
+              改密碼
+            </button>
+            <button
               onClick={handleLogout}
               className="flex items-center gap-2 px-4 py-2 text-sm font-medium text-slate-600 hover:text-red-600 hover:bg-red-50 rounded-lg transition-colors"
               title="登出"
@@ -269,6 +279,8 @@ export default function App() {
           )}
         </div>
       </Tabs>
+
+      <ChangePasswordDialog open={showPwDialog} onClose={() => setShowPwDialog(false)} />
     </div>
   );
 }
