@@ -1,6 +1,6 @@
 from fastapi import APIRouter, Depends, HTTPException
 from sqlalchemy.orm import Session
-from app.api.deps import get_db
+from app.api.deps import get_db, get_current_user, require_role
 from app.services.barcode_service import (
     parse_barcode,
     learn_pattern,
@@ -22,7 +22,11 @@ router = APIRouter(prefix="/barcodes", tags=["barcodes"])
 
 
 @router.post("/parse", response_model=ParseResult)
-def scan_parse(req: ScanRequest, db: Session = Depends(get_db)):
+def scan_parse(
+    req: ScanRequest,
+    db: Session = Depends(get_db),
+    _current_user: dict = Depends(get_current_user),
+):
     """
     Parse a single barcode string against rules for the given vendor.
     Returns 422 if no pattern matches.
@@ -39,7 +43,11 @@ def scan_parse(req: ScanRequest, db: Session = Depends(get_db)):
 
 
 @router.post("/learn", response_model=LearnResult)
-def learn_new_pattern(req: LearnRequest, db: Session = Depends(get_db)):
+def learn_new_pattern(
+    req: LearnRequest,
+    db: Session = Depends(get_db),
+    _current_user: dict = Depends(get_current_user),
+):
     """
     Infer a new barcode pattern from samples using AI.
     Optionally save to database if save_pattern=True.
@@ -57,6 +65,7 @@ def get_patterns(
     vendor_id: int | None = None,
     include_inactive: bool = False,
     db: Session = Depends(get_db),
+    _current_user: dict = Depends(get_current_user),
 ):
     """
     List barcode patterns. Filter by vendor_id if provided.
@@ -66,7 +75,11 @@ def get_patterns(
 
 
 @router.post("/patterns", response_model=PatternOut, status_code=201)
-def add_pattern(req: CreatePatternRequest, db: Session = Depends(get_db)):
+def add_pattern(
+    req: CreatePatternRequest,
+    db: Session = Depends(get_db),
+    _current_user: dict = Depends(require_role("admin")),
+):
     """
     Manually create a barcode pattern. Returns 400 if the regex is invalid
     or the vendor does not exist.
@@ -82,6 +95,7 @@ def toggle_pattern(
     pattern_id: int,
     req: SetPatternActiveRequest,
     db: Session = Depends(get_db),
+    _current_user: dict = Depends(require_role("admin")),
 ):
     """Enable/disable a barcode pattern. Returns 404 if not found."""
     try:
