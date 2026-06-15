@@ -29,6 +29,7 @@ import InventoryModule from '../InventoryModule';
 import PickingModule from '../PickingModule';
 import TraceabilityModule from '../TraceabilityModule';
 import BarcodeRuleModule from '../BarcodeRuleModule';
+import CustomerModule from '../CustomerModule';
 
 // Helper to create QueryClient wrapper
 function withQueryClient(ui: React.ReactNode) {
@@ -90,6 +91,20 @@ describe('Modules smoke test', () => {
       render(withQueryClient(<BarcodeRuleModule />));
       const title = await screen.findByText('條碼規則管理');
       expect(title).toBeInTheDocument();
+    });
+  });
+
+  describe('CustomerModule', () => {
+    it('render 不拋例外且可找到「客戶管理」', async () => {
+      render(withQueryClient(<CustomerModule />));
+      const title = await screen.findByText('客戶管理');
+      expect(title).toBeInTheDocument();
+    });
+
+    it('空清單顯示「尚無客戶資料」', async () => {
+      render(withQueryClient(<CustomerModule />));
+      const emptyText = await screen.findByText('尚無客戶資料');
+      expect(emptyText).toBeInTheDocument();
     });
   });
 });

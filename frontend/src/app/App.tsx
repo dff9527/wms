@@ -9,6 +9,7 @@ import TraceabilityModule from './components/TraceabilityModule';
 import DashboardModule from './components/DashboardModule';
 import BarcodeRuleModule from './components/BarcodeRuleModule';
 import UserAdminModule from './components/UserAdminModule';
+import CustomerModule from './components/CustomerModule';
 import {
   login,
   logout,
@@ -241,6 +242,13 @@ export default function App() {
               <ScanLine className="size-4" />
               條碼規則
             </TabsTrigger>
+            <TabsTrigger
+              value="customers"
+              className="flex items-center gap-2 px-4 py-3 text-sm font-medium text-slate-600 hover:text-slate-900 border-b-2 border-transparent data-[state=active]:border-blue-600 data-[state=active]:text-blue-600 transition-colors"
+            >
+              <Package className="size-4" />
+              客戶管理
+            </TabsTrigger>
             {getRole() === 'admin' && (
               <TabsTrigger
                 value="users"
@@ -271,6 +279,9 @@ export default function App() {
           </TabsContent>
           <TabsContent value="barcode-rules" className="size-full p-0">
             <BarcodeRuleModule />
+          </TabsContent>
+          <TabsContent value="customers" className="size-full p-0">
+            <CustomerModule />
           </TabsContent>
           {getRole() === 'admin' && (
             <TabsContent value="users" className="size-full p-0">
