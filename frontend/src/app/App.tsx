@@ -7,6 +7,7 @@ import PickingModule from './components/PickingModule';
 import TraceabilityModule from './components/TraceabilityModule';
 import DashboardModule from './components/DashboardModule';
 import BarcodeRuleModule from './components/BarcodeRuleModule';
+import UserAdminModule from './components/UserAdminModule';
 import {
   login,
   logout,
@@ -14,6 +15,7 @@ import {
   setupAuthInterceptor,
   removeAuthInterceptor,
   fetchCurrentUser,
+  getRole,
 } from './api/auth';
 
 export default function App() {
@@ -153,6 +155,8 @@ export default function App() {
   }
 
   // Render main app when authenticated
+  const roleLabel = { admin: '管理員', qc: '品管', supervisor: '主管', operator: '作業員' }[getRole()] ?? '';
+
   return (
     <div className="size-full bg-slate-50">
       <header className="bg-white border-b border-slate-200 px-6 py-4">
@@ -168,7 +172,7 @@ export default function App() {
           </div>
           <div className="flex items-center gap-4">
             <div className="text-right">
-              <p className="text-sm font-medium text-slate-700">操作員: {username}</p>
+              <p className="text-sm font-medium text-slate-700">操作員: {username}{roleLabel ? `(${roleLabel})` : ''}</p>
             </div>
             <button
               onClick={handleLogout}
@@ -227,6 +231,15 @@ export default function App() {
               <ScanLine className="size-4" />
               條碼規則
             </TabsTrigger>
+            {getRole() === 'admin' && (
+              <TabsTrigger
+                value="users"
+                className="flex items-center gap-2 px-4 py-3 text-sm font-medium text-slate-600 hover:text-slate-900 border-b-2 border-transparent data-[state=active]:border-blue-600 data-[state=active]:text-blue-600 transition-colors"
+              >
+                <Search className="size-4" />
+                使用者管理
+              </TabsTrigger>
+            )}
           </TabsList>
         </div>
 
@@ -249,6 +262,11 @@ export default function App() {
           <TabsContent value="barcode-rules" className="size-full p-0">
             <BarcodeRuleModule />
           </TabsContent>
+          {getRole() === 'admin' && (
+            <TabsContent value="users" className="size-full p-0">
+              <UserAdminModule />
+            </TabsContent>
+          )}
         </div>
       </Tabs>
     </div>
