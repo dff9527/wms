@@ -12,6 +12,7 @@ import {
 } from 'lucide-react';
 import type { InventoryLotRow, InventoryLotRowStatus } from '../types/wms-inventory';
 import { useInventoryLots, useAdjustLotMutation, useSplitLotMutation } from '../api/inventory';
+import { getRole } from '../api/auth';
 import { exportCsv } from '../utils/exportCsv';
 
 export default function InventoryModule() {
@@ -428,98 +429,99 @@ export default function InventoryModule() {
                 <p className="text-xl font-mono font-bold text-blue-600">{selectedLot.location}</p>
               </div>
 
-              {/* 調整 / 拆帶(後端限 supervisor/admin)*/}
-              <div className="pt-4 border-t border-slate-200 space-y-3">
-                <div className="flex gap-2">
-                  <button
-                    type="button"
-                    onClick={() => {
-                      setActionForm(actionForm === 'adjust' ? null : 'adjust');
-                      setActionError(null);
-                    }}
-                    className={`px-4 py-2 rounded-lg text-sm font-medium transition-colors flex items-center gap-2 ${actionForm === 'adjust' ? 'bg-blue-600 text-white' : 'bg-slate-100 text-slate-700 hover:bg-slate-200'}`}
-                  >
-                    <SlidersHorizontal className="size-4" />
-                    數量調整
-                  </button>
-                  <button
-                    type="button"
-                    onClick={() => {
-                      setActionForm(actionForm === 'split' ? null : 'split');
-                      setActionError(null);
-                    }}
-                    className={`px-4 py-2 rounded-lg text-sm font-medium transition-colors flex items-center gap-2 ${actionForm === 'split' ? 'bg-blue-600 text-white' : 'bg-slate-100 text-slate-700 hover:bg-slate-200'}`}
-                  >
-                    <Scissors className="size-4" />
-                    拆帶
-                  </button>
-                </div>
+              {['admin','supervisor'].includes(getRole()) && (
+                <div className="pt-4 border-t border-slate-200 space-y-3">
+                  <div className="flex gap-2">
+                    <button
+                      type="button"
+                      onClick={() => {
+                        setActionForm(actionForm === 'adjust' ? null : 'adjust');
+                        setActionError(null);
+                      }}
+                      className={`px-4 py-2 rounded-lg text-sm font-medium transition-colors flex items-center gap-2 ${actionForm === 'adjust' ? 'bg-blue-600 text-white' : 'bg-slate-100 text-slate-700 hover:bg-slate-200'}`}
+                    >
+                      <SlidersHorizontal className="size-4" />
+                      數量調整
+                    </button>
+                    <button
+                      type="button"
+                      onClick={() => {
+                        setActionForm(actionForm === 'split' ? null : 'split');
+                        setActionError(null);
+                      }}
+                      className={`px-4 py-2 rounded-lg text-sm font-medium transition-colors flex items-center gap-2 ${actionForm === 'split' ? 'bg-blue-600 text-white' : 'bg-slate-100 text-slate-700 hover:bg-slate-200'}`}
+                    >
+                      <Scissors className="size-4" />
+                      拆帶
+                    </button>
+                  </div>
 
-                {actionForm === 'adjust' && (
-                  <div className="bg-slate-50 rounded-lg p-4 space-y-3">
-                    <div className="grid grid-cols-2 gap-3">
+                  {actionForm === 'adjust' && (
+                    <div className="bg-slate-50 rounded-lg p-4 space-y-3">
+                      <div className="grid grid-cols-2 gap-3">
+                        <div>
+                          <label className="block text-xs text-slate-600 mb-1">
+                            調整量(正數加、負數減)
+                          </label>
+                          <input
+                            type="number"
+                            value={adjustQty}
+                            onChange={(e) => setAdjustQty(e.target.value)}
+                            placeholder="-100"
+                            className="w-full px-3 py-2 text-sm border border-slate-300 rounded focus:ring-2 focus:ring-blue-500"
+                          />
+                        </div>
+                        <div>
+                          <label className="block text-xs text-slate-600 mb-1">原因</label>
+                          <input
+                            type="text"
+                            value={adjustReason}
+                            onChange={(e) => setAdjustReason(e.target.value)}
+                            placeholder="盤點差異 / 報廢…"
+                            className="w-full px-3 py-2 text-sm border border-slate-300 rounded focus:ring-2 focus:ring-blue-500"
+                          />
+                        </div>
+                      </div>
+                      <button
+                        type="button"
+                        onClick={handleAdjust}
+                        disabled={adjustMutation.isPending}
+                        className="px-4 py-2 bg-blue-600 text-white rounded-lg text-sm hover:bg-blue-700 transition-colors disabled:opacity-50"
+                      >
+                        {adjustMutation.isPending ? '處理中…' : '確認調整'}
+                      </button>
+                    </div>
+                  )}
+
+                  {actionForm === 'split' && (
+                    <div className="bg-slate-50 rounded-lg p-4 space-y-3">
                       <div>
                         <label className="block text-xs text-slate-600 mb-1">
-                          調整量(正數加、負數減)
+                          拆出數量(須小於可用量 {selectedLot.qtyOnHand.toLocaleString()})
                         </label>
                         <input
                           type="number"
-                          value={adjustQty}
-                          onChange={(e) => setAdjustQty(e.target.value)}
-                          placeholder="-100"
-                          className="w-full px-3 py-2 text-sm border border-slate-300 rounded focus:ring-2 focus:ring-blue-500"
+                          min="1"
+                          value={splitQty}
+                          onChange={(e) => setSplitQty(e.target.value)}
+                          placeholder="500"
+                          className="w-48 px-3 py-2 text-sm border border-slate-300 rounded focus:ring-2 focus:ring-blue-500"
                         />
                       </div>
-                      <div>
-                        <label className="block text-xs text-slate-600 mb-1">原因</label>
-                        <input
-                          type="text"
-                          value={adjustReason}
-                          onChange={(e) => setAdjustReason(e.target.value)}
-                          placeholder="盤點差異 / 報廢…"
-                          className="w-full px-3 py-2 text-sm border border-slate-300 rounded focus:ring-2 focus:ring-blue-500"
-                        />
-                      </div>
+                      <button
+                        type="button"
+                        onClick={handleSplit}
+                        disabled={splitMutation.isPending}
+                        className="px-4 py-2 bg-blue-600 text-white rounded-lg text-sm hover:bg-blue-700 transition-colors disabled:opacity-50"
+                      >
+                        {splitMutation.isPending ? '處理中…' : '確認拆帶'}
+                      </button>
                     </div>
-                    <button
-                      type="button"
-                      onClick={handleAdjust}
-                      disabled={adjustMutation.isPending}
-                      className="px-4 py-2 bg-blue-600 text-white rounded-lg text-sm hover:bg-blue-700 transition-colors disabled:opacity-50"
-                    >
-                      {adjustMutation.isPending ? '處理中…' : '確認調整'}
-                    </button>
-                  </div>
-                )}
+                  )}
 
-                {actionForm === 'split' && (
-                  <div className="bg-slate-50 rounded-lg p-4 space-y-3">
-                    <div>
-                      <label className="block text-xs text-slate-600 mb-1">
-                        拆出數量(須小於可用量 {selectedLot.qtyOnHand.toLocaleString()})
-                      </label>
-                      <input
-                        type="number"
-                        min="1"
-                        value={splitQty}
-                        onChange={(e) => setSplitQty(e.target.value)}
-                        placeholder="500"
-                        className="w-48 px-3 py-2 text-sm border border-slate-300 rounded focus:ring-2 focus:ring-blue-500"
-                      />
-                    </div>
-                    <button
-                      type="button"
-                      onClick={handleSplit}
-                      disabled={splitMutation.isPending}
-                      className="px-4 py-2 bg-blue-600 text-white rounded-lg text-sm hover:bg-blue-700 transition-colors disabled:opacity-50"
-                    >
-                      {splitMutation.isPending ? '處理中…' : '確認拆帶'}
-                    </button>
-                  </div>
-                )}
-
-                {actionError && <p className="text-sm text-red-600">{actionError}</p>}
-              </div>
+                  {actionError && <p className="text-sm text-red-600">{actionError}</p>}
+                </div>
+              )}
             </div>
           </div>
         </div>

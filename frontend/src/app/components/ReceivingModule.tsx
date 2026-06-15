@@ -20,6 +20,7 @@ import {
   useCreatePO,
   useOpenPOs,
 } from '../hooks/useReceivingQueries';
+import { getRole } from '../api/auth';
 import type { ReceivingItem } from '../types/receiving';
 
 /**
@@ -503,69 +504,74 @@ export default function ReceivingModule() {
                   </div>
                 )}
 
-                {/* IQC Form */}
-                <div className="pt-4 border-t border-slate-200">
-                  <label className="block text-xs text-slate-600 mb-1">檢驗結果</label>
-                  <select
-                    id="iqc-result"
-                    className="w-full px-3 py-2 text-sm border border-slate-300 rounded focus:ring-2 focus:ring-blue-500 mb-3"
-                  >
-                    <option value="PASS">合格 (PASS)</option>
-                    <option value="FAIL">不合格 (FAIL)</option>
-                  </select>
+                {['admin','qc'].includes(getRole()) ? (
+                  <div className="pt-4 border-t border-slate-200">
+                    <label className="block text-xs text-slate-600 mb-1">檢驗結果</label>
+                    <select
+                      id="iqc-result"
+                      className="w-full px-3 py-2 text-sm border border-slate-300 rounded focus:ring-2 focus:ring-blue-500 mb-3"
+                    >
+                      <option value="PASS">合格 (PASS)</option>
+                      <option value="FAIL">不合格 (FAIL)</option>
+                    </select>
 
-                  <label className="block text-xs text-slate-600 mb-1">檢驗員</label>
-                  <input
-                    type="text"
-                    id="iqc-inspector"
-                    placeholder="輸入檢驗員姓名"
-                    className="w-full px-3 py-2 text-sm border border-slate-300 rounded focus:ring-2 focus:ring-blue-500 mb-3"
-                  />
+                    <label className="block text-xs text-slate-600 mb-1">檢驗員</label>
+                    <input
+                      type="text"
+                      id="iqc-inspector"
+                      placeholder="輸入檢驗員姓名"
+                      className="w-full px-3 py-2 text-sm border border-slate-300 rounded focus:ring-2 focus:ring-blue-500 mb-3"
+                    />
 
-                  <label className="block text-xs text-slate-600 mb-1">備註</label>
-                  <textarea
-                    id="iqc-notes"
-                    placeholder="檢驗備註（可選）"
-                    className="w-full px-3 py-2 text-sm border border-slate-300 rounded focus:ring-2 focus:ring-blue-500 mb-3"
-                    rows={2}
-                  />
+                    <label className="block text-xs text-slate-600 mb-1">備註</label>
+                    <textarea
+                      id="iqc-notes"
+                      placeholder="檢驗備註（可選）"
+                      className="w-full px-3 py-2 text-sm border border-slate-300 rounded focus:ring-2 focus:ring-blue-500 mb-3"
+                      rows={2}
+                    />
 
-                  <button
-                    type="button"
-                    onClick={() => {
-                      const resultEl = document.getElementById('iqc-result') as HTMLSelectElement;
-                      const inspectorEl = document.getElementById(
-                        'iqc-inspector'
-                      ) as HTMLInputElement;
-                      const notesEl = document.getElementById('iqc-notes') as HTMLTextAreaElement;
+                    <button
+                      type="button"
+                      onClick={() => {
+                        const resultEl = document.getElementById('iqc-result') as HTMLSelectElement;
+                        const inspectorEl = document.getElementById(
+                          'iqc-inspector'
+                        ) as HTMLInputElement;
+                        const notesEl = document.getElementById('iqc-notes') as HTMLTextAreaElement;
 
-                      if (!resultEl || !inspectorEl) return;
+                        if (!resultEl || !inspectorEl) return;
 
-                      handleCompleteIQC(
-                        resultEl.value as 'PASS' | 'FAIL',
-                        inspectorEl.value,
-                        notesEl?.value || undefined
-                      );
-                    }}
-                    disabled={iqcMutation.isPending || !isLabelPrinted}
-                    className="w-full px-4 py-2 bg-blue-600 text-white rounded-lg hover:bg-blue-700 transition-colors flex items-center justify-center gap-2 disabled:opacity-50"
-                  >
-                    {iqcMutation.isPending ? (
-                      '提交中...'
-                    ) : (
-                      <>
-                        <CheckCircle2 className="size-4" />
-                        完成 IQC
-                      </>
+                        handleCompleteIQC(
+                          resultEl.value as 'PASS' | 'FAIL',
+                          inspectorEl.value,
+                          notesEl?.value || undefined
+                        );
+                      }}
+                      disabled={iqcMutation.isPending || !isLabelPrinted}
+                      className="w-full px-4 py-2 bg-blue-600 text-white rounded-lg hover:bg-blue-700 transition-colors flex items-center justify-center gap-2 disabled:opacity-50"
+                    >
+                      {iqcMutation.isPending ? (
+                        '提交中...'
+                      ) : (
+                        <>
+                          <CheckCircle2 className="size-4" />
+                          完成 IQC
+                        </>
+                      )}
+                    </button>
+
+                    {!isLabelPrinted && (
+                      <p className="text-xs text-amber-600 mt-2">
+                        此供應商要求換標，請先列印內部標籤
+                      </p>
                     )}
-                  </button>
-
-                  {!isLabelPrinted && (
-                    <p className="text-xs text-amber-600 mt-2">
-                      此供應商要求換標，請先列印內部標籤
-                    </p>
-                  )}
-                </div>
+                  </div>
+                ) : (
+                  <p className="text-sm text-slate-500 bg-slate-50 rounded-lg p-3">
+                    IQC 檢驗需要品管(qc)或管理員權限
+                  </p>
+                )}
               </div>
             ) : (
               <div className="flex flex-col items-center justify-center py-12 text-slate-400">
