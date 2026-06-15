@@ -1,5 +1,15 @@
 import { useState } from 'react';
-import { Search, Plus, UserCog, LockKeyhole, Loader2, AlertCircle, Save } from 'lucide-react';
+import {
+  Search,
+  Plus,
+  UserCog,
+  LockKeyhole,
+  Loader2,
+  AlertCircle,
+  Save,
+  Pencil,
+  Trash2,
+} from 'lucide-react';
 import type { User } from '../api/users';
 import {
   useUsers,
@@ -60,6 +70,18 @@ export default function UserAdminModule() {
   const [newPassword, setNewPassword] = useState('');
   const [passwordError, setPasswordError] = useState<string | null>(null);
 
+  // 顯示已停用帳號(預設隱藏:停用 = 軟刪除)
+  const [showInactive, setShowInactive] = useState(false);
+
+  // 刪除確認對話框
+  const [deleteTarget, setDeleteTarget] = useState<User | null>(null);
+  const [deleteError, setDeleteError] = useState<string | null>(null);
+
+  // 編輯姓名對話框
+  const [editTarget, setEditTarget] = useState<User | null>(null);
+  const [editName, setEditName] = useState('');
+  const [editError, setEditError] = useState<string | null>(null);
+
   // 錯誤訊息處理
   const errDetail = (err: unknown): string => {
     const detail = (err as any)?.response?.data?.detail;
@@ -94,6 +116,9 @@ export default function UserAdminModule() {
         )
       )
     : users;
+
+  // 預設隱藏已停用(軟刪除)帳號,除非開啟「顯示已停用」
+  const visibleUsers = showInactive ? filteredUsers : filteredUsers.filter((u) => u.is_active);
 
   // 關閉新增使用者對話框
   const closeAddDialog = () => {
@@ -165,6 +190,49 @@ export default function UserAdminModule() {
     }
   };
 
+  // 開啟刪除確認
+  const openDeleteDialog = (user: User) => {
+    setDeleteTarget(user);
+    setDeleteError(null);
+  };
+
+  // 處理刪除(軟刪除:停用)
+  const handleDelete = async () => {
+    if (!deleteTarget) return;
+    setDeleteError(null);
+    try {
+      await updateMutation.mutateAsync({
+        userId: deleteTarget.user_id,
+        payload: { is_active: false },
+      });
+      setDeleteTarget(null);
+    } catch (err) {
+      setDeleteError(errDetail(err));
+    }
+  };
+
+  // 開啟編輯姓名
+  const openEditDialog = (user: User) => {
+    setEditTarget(user);
+    setEditName(user.full_name ?? '');
+    setEditError(null);
+  };
+
+  // 處理編輯姓名
+  const handleEditName = async () => {
+    if (!editTarget) return;
+    setEditError(null);
+    try {
+      await updateMutation.mutateAsync({
+        userId: editTarget.user_id,
+        payload: { full_name: editName.trim() || null },
+      });
+      setEditTarget(null);
+    } catch (err) {
+      setEditError(errDetail(err));
+    }
+  };
+
   // 加載狀態
   if (isPending) {
     return (
@@ -207,6 +275,12 @@ export default function UserAdminModule() {
               className="pl-9"
             />
           </div>
+          <div className="flex items-center gap-2 whitespace-nowrap">
+            <Switch id="show-inactive" checked={showInactive} onCheckedChange={setShowInactive} />
+            <Label htmlFor="show-inactive" className="text-sm text-slate-600">
+              顯示已停用
+            </Label>
+          </div>
           <Button type="button" onClick={() => setShowAddDialog(true)}>
             <Plus className="size-4" />
             新增使用者
@@ -219,11 +293,11 @@ export default function UserAdminModule() {
         <CardHeader>
           <CardTitle>使用者管理</CardTitle>
           <p className="text-sm text-slate-500">
-            總計 {filteredUsers.length} 位使用者{term ? `(已過濾,全部 ${users.length})` : ''}
+            總計 {visibleUsers.length} 位使用者{term ? `(已過濾,全部 ${users.length})` : ''}
           </p>
         </CardHeader>
         <CardContent>
-          {filteredUsers.length === 0 ? (
+          {visibleUsers.length === 0 ? (
             <div className="flex flex-col items-center justify-center py-12 text-slate-400">
               <UserCog className="size-12 mb-2" />
               <p className="text-sm">暫無使用者資料</p>
@@ -241,7 +315,7 @@ export default function UserAdminModule() {
                   </TableRow>
                 </TableHeader>
                 <TableBody>
-                  {filteredUsers.map((user) => {
+                  {visibleUsers.map((user) => {
                     const isSelf = user.username === currentUsername;
                     return (
                       <TableRow key={user.user_id}>
@@ -296,19 +370,40 @@ export default function UserAdminModule() {
                           {isSelf ? (
                             <span className="text-xs text-slate-400">—</span>
                           ) : (
-                            <Button
-                              type="button"
-                              variant="ghost"
-                              size="sm"
-                              onClick={() =>
-                                setShowPasswordDialog({ open: true, userId: user.user_id })
-                              }
-                              disabled={passwordMutation.isPending}
-                              className="text-red-600 hover:text-red-700"
-                            >
-                              <LockKeyhole className="size-3" />
-                              重設密碼
-                            </Button>
+                            <div className="flex items-center justify-center gap-1">
+                              <Button
+                                type="button"
+                                variant="ghost"
+                                size="sm"
+                                onClick={() => openEditDialog(user)}
+                              >
+                                <Pencil className="size-3" />
+                                編輯
+                              </Button>
+                              <Button
+                                type="button"
+                                variant="ghost"
+                                size="sm"
+                                onClick={() =>
+                                  setShowPasswordDialog({ open: true, userId: user.user_id })
+                                }
+                                disabled={passwordMutation.isPending}
+                              >
+                                <LockKeyhole className="size-3" />
+                                重設密碼
+                              </Button>
+                              <Button
+                                type="button"
+                                variant="ghost"
+                                size="sm"
+                                onClick={() => openDeleteDialog(user)}
+                                disabled={updateMutation.isPending}
+                                className="text-red-600 hover:text-red-700"
+                              >
+                                <Trash2 className="size-3" />
+                                刪除
+                              </Button>
+                            </div>
                           )}
                         </TableCell>
                       </TableRow>
@@ -468,6 +563,110 @@ export default function UserAdminModule() {
                 <>
                   <LockKeyhole className="size-4" />
                   確認重設
+                </>
+              )}
+            </Button>
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
+
+      {/* 編輯姓名對話框 */}
+      <Dialog
+        open={!!editTarget}
+        onOpenChange={(open) => {
+          if (!open) setEditTarget(null);
+        }}
+      >
+        <DialogContent>
+          <DialogHeader>
+            <DialogTitle>編輯姓名</DialogTitle>
+            <DialogDescription>修改「{editTarget?.username}」的姓名。</DialogDescription>
+          </DialogHeader>
+
+          <div className="space-y-4">
+            <div className="space-y-1.5">
+              <Label htmlFor="edit-fullname">姓名</Label>
+              <Input
+                id="edit-fullname"
+                type="text"
+                value={editName}
+                onChange={(e) => setEditName(e.target.value)}
+                placeholder="輸入姓名（留空表示清除）"
+                autoFocus
+              />
+            </div>
+
+            {editError && (
+              <div className="flex items-start gap-2 text-sm text-red-600 bg-red-50 p-3 rounded">
+                <AlertCircle className="size-4 shrink-0 mt-0.5" />
+                <span>{editError}</span>
+              </div>
+            )}
+          </div>
+
+          <DialogFooter>
+            <Button type="button" variant="outline" onClick={() => setEditTarget(null)}>
+              取消
+            </Button>
+            <Button type="button" onClick={handleEditName} disabled={updateMutation.isPending}>
+              {updateMutation.isPending ? (
+                <>
+                  <Loader2 className="size-4 animate-spin" />
+                  處理中...
+                </>
+              ) : (
+                <>
+                  <Save className="size-4" />
+                  儲存
+                </>
+              )}
+            </Button>
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
+
+      {/* 刪除確認對話框 */}
+      <Dialog
+        open={!!deleteTarget}
+        onOpenChange={(open) => {
+          if (!open) setDeleteTarget(null);
+        }}
+      >
+        <DialogContent>
+          <DialogHeader>
+            <DialogTitle>刪除使用者</DialogTitle>
+            <DialogDescription>
+              確定要刪除「{deleteTarget?.username}
+              」嗎?此帳號將被停用並從清單隱藏,可在「顯示已停用」中重新啟用。
+            </DialogDescription>
+          </DialogHeader>
+
+          {deleteError && (
+            <div className="flex items-start gap-2 text-sm text-red-600 bg-red-50 p-3 rounded">
+              <AlertCircle className="size-4 shrink-0 mt-0.5" />
+              <span>{deleteError}</span>
+            </div>
+          )}
+
+          <DialogFooter>
+            <Button type="button" variant="outline" onClick={() => setDeleteTarget(null)}>
+              取消
+            </Button>
+            <Button
+              type="button"
+              variant="destructive"
+              onClick={handleDelete}
+              disabled={updateMutation.isPending}
+            >
+              {updateMutation.isPending ? (
+                <>
+                  <Loader2 className="size-4 animate-spin" />
+                  處理中...
+                </>
+              ) : (
+                <>
+                  <Trash2 className="size-4" />
+                  確認刪除
                 </>
               )}
             </Button>
