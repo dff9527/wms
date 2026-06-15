@@ -6,7 +6,8 @@ from app.services.barcode_service import (
     learn_pattern,
     list_patterns,
     create_pattern,
-    set_pattern_active,
+    update_pattern,
+    delete_pattern,
 )
 from app.schemas.barcode import (
     ScanRequest,
@@ -15,7 +16,7 @@ from app.schemas.barcode import (
     LearnResult,
     CreatePatternRequest,
     PatternOut,
-    SetPatternActiveRequest,
+    UpdatePatternRequest,
 )
 
 router = APIRouter(prefix="/barcodes", tags=["barcodes"])
@@ -91,14 +92,33 @@ def add_pattern(
 
 
 @router.patch("/patterns/{pattern_id}", response_model=PatternOut)
-def toggle_pattern(
+def update_pattern_route(
     pattern_id: int,
-    req: SetPatternActiveRequest,
+    req: UpdatePatternRequest,
     db: Session = Depends(get_db),
     _current_user: dict = Depends(require_role("admin")),
 ):
-    """Enable/disable a barcode pattern. Returns 404 if not found."""
+    """
+    Edit a barcode pattern. Returns 400 if the regex is invalid,
+    or 404 if the pattern does not exist.
+    """
     try:
-        return set_pattern_active(db, pattern_id, req.is_active)
+        return update_pattern(db, pattern_id, req)
+    except ValueError as e:
+        raise HTTPException(status_code=404, detail=str(e))
+
+
+@router.delete("/patterns/{pattern_id}")
+def delete_pattern_route(
+    pattern_id: int,
+    db: Session = Depends(get_db),
+    _current_user: dict = Depends(require_role("admin")),
+):
+    """
+    Soft-delete a barcode pattern (set is_active=False). Returns 200 on success.
+    """
+    try:
+        delete_pattern(db, pattern_id)
+        return {"detail": "deleted"}
     except ValueError as e:
         raise HTTPException(status_code=404, detail=str(e))

@@ -162,6 +162,56 @@ def set_pattern_active(db: Session, pattern_id: int, is_active: bool) -> Barcode
     return pattern
 
 
+def update_pattern(
+    db: Session, pattern_id: int, req: "UpdatePatternRequest"
+) -> BarcodePattern:
+    """
+    Update a barcode pattern's editable fields.
+    Validates regex_rule if provided. Raises ValueError if not found or invalid regex.
+    """
+    import re as _re
+
+    pattern = (
+        db.query(BarcodePattern).filter(BarcodePattern.pattern_id == pattern_id).first()
+    )
+    if pattern is None:
+        raise ValueError(f"Pattern {pattern_id} not found")
+
+    if req.regex_rule is not None:
+        try:
+            _re.compile(req.regex_rule)
+        except _re.error as e:
+            raise ValueError(f"Invalid regex: {e}")
+
+    if req.pattern_name is not None:
+        pattern.pattern_name = req.pattern_name
+    if req.regex_rule is not None:
+        pattern.regex_rule = req.regex_rule
+    if req.field_mapping is not None:
+        pattern.field_mapping = req.field_mapping
+    if req.priority is not None:
+        pattern.priority = req.priority
+    if req.is_active is not None:
+        pattern.is_active = req.is_active
+
+    db.commit()
+    db.refresh(pattern)
+    return pattern
+
+
+def delete_pattern(db: Session, pattern_id: int) -> BarcodePattern:
+    """Soft-delete a barcode pattern (set is_active=False). Raises ValueError if not found."""
+    pattern = (
+        db.query(BarcodePattern).filter(BarcodePattern.pattern_id == pattern_id).first()
+    )
+    if pattern is None:
+        raise ValueError(f"Pattern {pattern_id} not found")
+    pattern.is_active = False
+    db.commit()
+    db.refresh(pattern)
+    return pattern
+
+
 def list_patterns(
     db: Session, vendor_id: int | None = None, include_inactive: bool = False
 ):

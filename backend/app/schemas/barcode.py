@@ -56,3 +56,11 @@ class PatternOut(BaseModel):
 
 class SetPatternActiveRequest(BaseModel):
     is_active: bool
+
+
+class UpdatePatternRequest(BaseModel):
+    pattern_name: str | None = None
+    regex_rule: str | None = None
+    field_mapping: dict | None = None
+    priority: int | None = None
+    is_active: bool | None = None

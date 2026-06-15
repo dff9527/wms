@@ -52,10 +52,18 @@ export async function getVendors(): Promise<Vendor[]> {
   }
 }
 
-export async function getPatterns(vendorId?: string | null): Promise<BarcodePattern[]> {
+export async function getPatterns(
+  vendorId?: string | null,
+  includeInactive = false
+): Promise<BarcodePattern[]> {
   try {
-    const params = vendorId ? `?vendor_id=${encodeURIComponent(vendorId)}` : '';
-    const res = await axios.get(`${API_BASE_URL}/api/v1/barcodes/patterns${params}`);
+    const params = new URLSearchParams();
+    if (vendorId) params.set('vendor_id', vendorId);
+    if (includeInactive) params.set('include_inactive', 'true');
+    const qs = params.toString();
+    const res = await axios.get(
+      `${API_BASE_URL}/api/v1/barcodes/patterns${qs ? `?${qs}` : ''}`
+    );
     return res.data;
   } catch (err) {
     return handleAxiosError(err);
@@ -87,6 +95,32 @@ export async function togglePattern(patternId: string, isActive: boolean): Promi
     await axios.patch(`${API_BASE_URL}/api/v1/barcodes/patterns/${patternId}`, {
       is_active: isActive,
     });
+  } catch (err) {
+    return handleAxiosError(err);
+  }
+}
+
+export interface UpdatePatternPayload {
+  pattern_name?: string;
+  regex_rule?: string;
+  field_mapping?: Record<string, string>;
+  priority?: number;
+}
+
+export async function updatePattern(
+  patternId: string,
+  payload: UpdatePatternPayload
+): Promise<void> {
+  try {
+    await axios.patch(`${API_BASE_URL}/api/v1/barcodes/patterns/${patternId}`, payload);
+  } catch (err) {
+    return handleAxiosError(err);
+  }
+}
+
+export async function deletePattern(patternId: string): Promise<void> {
+  try {
+    await axios.delete(`${API_BASE_URL}/api/v1/barcodes/patterns/${patternId}`);
   } catch (err) {
     return handleAxiosError(err);
   }

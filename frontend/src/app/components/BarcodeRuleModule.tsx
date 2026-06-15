@@ -1,17 +1,39 @@
 import React, { useState, useEffect } from 'react';
 import { Tabs, TabsContent, TabsList, TabsTrigger } from '@radix-ui/react-tabs';
-import { PlusCircle, AlertTriangle, CheckCircle2, Loader2, ScanLine } from 'lucide-react';
+import {
+  PlusCircle,
+  AlertTriangle,
+  CheckCircle2,
+  Loader2,
+  ScanLine,
+  Pencil,
+  Trash2,
+} from 'lucide-react';
 import {
   getVendors,
   getPatterns,
   createPattern,
   togglePattern,
+  updatePattern,
+  deletePattern,
   parseBarcode,
   learnPattern,
   Vendor,
   BarcodePattern,
   ParseResult,
 } from '../api/barcodes';
+import { getRole } from '../api/auth';
+import {
+  Dialog,
+  DialogContent,
+  DialogDescription,
+  DialogFooter,
+  DialogHeader,
+  DialogTitle,
+} from './ui/dialog';
+import { Button } from './ui/button';
+import { Input } from './ui/input';
+import { Label } from './ui/label';
 
 const Badge = ({
   children,
@@ -73,6 +95,26 @@ export default function BarcodeRuleModule() {
   const [togglingPatternId, setTogglingPatternId] = useState<string | null>(null);
   const [toggleError, setToggleError] = useState<string | null>(null);
 
+  // 顯示已停用規則(預設隱藏:is_active=false)
+  const [showInactive, setShowInactive] = useState(false);
+
+  // 編輯對話框
+  const [editTarget, setEditTarget] = useState<BarcodePattern | null>(null);
+  const [editPatternName, setEditPatternName] = useState('');
+  const [editRegex, setEditRegex] = useState('');
+  const [editFieldMapping, setEditFieldMapping] = useState('{}');
+  const [editPriority, setEditPriority] = useState<number>(10);
+  const [editError, setEditError] = useState<string | null>(null);
+  const [isEditing, setIsEditing] = useState(false);
+
+  // 刪除確認對話框
+  const [deleteTarget, setDeleteTarget] = useState<BarcodePattern | null>(null);
+  const [deleteError, setDeleteError] = useState<string | null>(null);
+  const [isDeleting, setIsDeleting] = useState(false);
+
+  // 權限檢查
+  const isAdmin = getRole() === 'admin';
+
   // Fetch Vendors on Mount
   useEffect(() => {
     async function fetchVendors() {
@@ -92,7 +134,7 @@ export default function BarcodeRuleModule() {
     fetchVendors();
   }, []);
 
-  // Fetch Patterns when Vendor Changes
+  // Fetch Patterns when Vendor or showInactive Changes
   useEffect(() => {
     async function fetchPatterns() {
       if (!selectedVendorId) return;
@@ -100,7 +142,7 @@ export default function BarcodeRuleModule() {
       try {
         setLoadingPatterns(true);
         setError(null);
-        const data = await getPatterns(selectedVendorId);
+        const data = await getPatterns(selectedVendorId, showInactive);
         setPatterns(data);
       } catch (err: unknown) {
         setError((err as Error).message || 'Failed to load patterns');
@@ -114,7 +156,7 @@ export default function BarcodeRuleModule() {
     } else {
       setPatterns([]);
     }
-  }, [selectedVendorId]);
+  }, [selectedVendorId, showInactive]);
 
   // Handlers
   const handleTogglePattern = async (patternId: string, currentActive: boolean) => {
@@ -233,6 +275,87 @@ export default function BarcodeRuleModule() {
     }
   };
 
+  // --- Edit handlers ---
+  const openEditDialog = (pattern: BarcodePattern) => {
+    setEditTarget(pattern);
+    setEditPatternName(pattern.pattern_name);
+    setEditRegex(pattern.regex_rule);
+    setEditFieldMapping(JSON.stringify(pattern.field_mapping, null, 2));
+    setEditPriority(pattern.priority);
+    setEditError(null);
+  };
+
+  const closeEditDialog = () => {
+    setEditTarget(null);
+    setEditPatternName('');
+    setEditRegex('');
+    setEditFieldMapping('{}');
+    setEditPriority(10);
+    setEditError(null);
+  };
+
+  const handleUpdatePattern = async () => {
+    if (!editTarget) return;
+    setEditError(null);
+    setIsEditing(true);
+
+    let parsedMapping: Record<string, string>;
+    try {
+      parsedMapping = JSON.parse(editFieldMapping);
+    } catch {
+      setEditError('欄位對應不是有效的 JSON');
+      setIsEditing(false);
+      return;
+    }
+
+    try {
+      await updatePattern(String(editTarget.pattern_id), {
+        pattern_name: editPatternName,
+        regex_rule: editRegex,
+        field_mapping: parsedMapping,
+        priority: editPriority,
+      });
+      closeEditDialog();
+      if (selectedVendorId) {
+        const data = await getPatterns(selectedVendorId, showInactive);
+        setPatterns(data);
+      }
+    } catch (err: unknown) {
+      setEditError((err as Error).message || '編輯失敗');
+    } finally {
+      setIsEditing(false);
+    }
+  };
+
+  // --- Delete handlers ---
+  const openDeleteDialog = (pattern: BarcodePattern) => {
+    setDeleteTarget(pattern);
+    setDeleteError(null);
+  };
+
+  const closeDeleteDialog = () => {
+    setDeleteTarget(null);
+    setDeleteError(null);
+  };
+
+  const handleDeletePattern = async () => {
+    if (!deleteTarget) return;
+    setDeleteError(null);
+    setIsDeleting(true);
+
+    try {
+      await deletePattern(String(deleteTarget.pattern_id));
+      closeDeleteDialog();
+      // 如果停用後清單為空且 showInactive 為 false,保持不變;否則 refetch
+      const data = await getPatterns(selectedVendorId, showInactive);
+      setPatterns(data);
+    } catch (err: unknown) {
+      setDeleteError((err as Error).message || '刪除失敗');
+    } finally {
+      setIsDeleting(false);
+    }
+  };
+
   return (
     <div className="flex flex-col gap-6 h-full p-6">
       {/* Header / Vendor Selector */}
@@ -283,7 +406,21 @@ export default function BarcodeRuleModule() {
 
       {/* Patterns Table */}
       <div className="bg-white rounded-lg border border-slate-200 p-6 shadow-sm">
-        <h3 className="text-base font-medium text-slate-900 mb-4">規則列表</h3>
+        <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-3 mb-4">
+          <h3 className="text-base font-medium text-slate-900">規則列表</h3>
+          <div className="flex items-center gap-2">
+            <label htmlFor="show-inactive-toggle" className="text-sm text-slate-600 flex items-center gap-2 cursor-pointer">
+              <input
+                id="show-inactive-toggle"
+                type="checkbox"
+                checked={showInactive}
+                onChange={(e) => setShowInactive(e.target.checked)}
+                className="rounded border-slate-300"
+              />
+              顯示已停用
+            </label>
+          </div>
+        </div>
 
         {toggleError && (
           <div className="mb-3 p-2 bg-red-50 border border-red-200 text-red-700 text-sm rounded flex items-center gap-2">
@@ -337,7 +474,7 @@ export default function BarcodeRuleModule() {
               </thead>
               <tbody className="bg-white divide-y divide-slate-200">
                 {patterns.map((pattern) => (
-                  <tr key={pattern.pattern_id}>
+                  <tr key={pattern.pattern_id} className={pattern.is_active ? '' : 'opacity-50'}>
                     <td className="px-6 py-4 whitespace-nowrap text-sm font-medium text-slate-900">
                       {pattern.pattern_name}
                     </td>
@@ -356,20 +493,43 @@ export default function BarcodeRuleModule() {
                       </Badge>
                     </td>
                     <td className="px-6 py-4 whitespace-nowrap text-right text-sm font-medium">
-                      <button
-                        onClick={() =>
-                          handleTogglePattern(pattern.pattern_id, Boolean(pattern.is_active))
-                        }
-                        disabled={togglingPatternId === pattern.pattern_id}
-                        className="text-blue-600 hover:text-blue-900 text-sm font-medium cursor-pointer disabled:opacity-50 disabled:cursor-not-allowed"
-                        aria-label={`切換 ${pattern.pattern_name} 狀態`}
-                      >
-                        {togglingPatternId === pattern.pattern_id ? (
-                          <Loader2 className="inline w-4 h-4 animate-spin mr-1" />
-                        ) : (
-                          '切換狀態'
+                      <div className="flex items-center justify-end gap-1">
+                        <button
+                          onClick={() => openEditDialog(pattern)}
+                          className="inline-flex items-center text-blue-600 hover:text-blue-900 text-sm font-medium cursor-pointer"
+                          aria-label={`編輯 ${pattern.pattern_name}`}
+                        >
+                          <Pencil className="w-4 h-4 mr-1" />
+                          編輯
+                        </button>
+                        {isAdmin && (
+                          <>
+                            <button
+                              onClick={() =>
+                                handleTogglePattern(pattern.pattern_id, Boolean(pattern.is_active))
+                              }
+                              disabled={togglingPatternId === pattern.pattern_id}
+                              className="inline-flex items-center text-slate-600 hover:text-slate-900 text-sm font-medium cursor-pointer disabled:opacity-50 disabled:cursor-not-allowed"
+                              aria-label={`切換 ${pattern.pattern_name} 狀態`}
+                            >
+                              {togglingPatternId === pattern.pattern_id ? (
+                                <Loader2 className="inline w-4 h-4 animate-spin mr-1" />
+                              ) : (
+                                '切換'
+                              )}
+                            </button>
+                            <button
+                              onClick={() => openDeleteDialog(pattern)}
+                              disabled={isDeleting}
+                              className="inline-flex items-center text-red-600 hover:text-red-900 text-sm font-medium cursor-pointer disabled:opacity-50 disabled:cursor-not-allowed"
+                              aria-label={`刪除 ${pattern.pattern_name}`}
+                            >
+                              <Trash2 className="w-4 h-4 mr-1" />
+                              刪除
+                            </button>
+                          </>
                         )}
-                      </button>
+                      </div>
                     </td>
                   </tr>
                 ))}
@@ -607,6 +767,148 @@ export default function BarcodeRuleModule() {
           </div>
         </TabsContent>
       </Tabs>
+
+      {/* Edit Pattern Dialog */}
+      <Dialog
+        open={!!editTarget}
+        onOpenChange={(open) => {
+          if (!open) closeEditDialog();
+        }}
+      >
+        <DialogContent>
+          <DialogHeader>
+            <DialogTitle>編輯條碼規則</DialogTitle>
+            <DialogDescription>
+              修改「{editTarget?.pattern_name}」的規則設定。
+            </DialogDescription>
+          </DialogHeader>
+
+          <div className="space-y-4">
+            <div className="space-y-1.5">
+              <Label htmlFor="edit-pattern-name">規則名稱</Label>
+              <Input
+                id="edit-pattern-name"
+                type="text"
+                value={editPatternName}
+                onChange={(e) => setEditPatternName(e.target.value)}
+                placeholder="輸入規則名稱"
+              />
+            </div>
+
+            <div className="space-y-1.5">
+              <Label htmlFor="edit-regex">正則表達式</Label>
+              <Input
+                id="edit-regex"
+                type="text"
+                value={editRegex}
+                onChange={(e) => setEditRegex(e.target.value)}
+                placeholder="^([A-Z]{2})(\\d{4})$"
+                className="font-mono"
+              />
+            </div>
+
+            <div className="space-y-1.5">
+              <Label htmlFor="edit-field-mapping">欄位對應 (JSON)</Label>
+              <textarea
+                id="edit-field-mapping"
+                rows={4}
+                value={editFieldMapping}
+                onChange={(e) => setEditFieldMapping(e.target.value)}
+                className="w-full rounded-md border border-slate-300 px-3 py-2 text-sm font-mono focus:border-blue-500 focus:outline-none focus:ring-1 focus:ring-blue-500"
+                placeholder='{"pn": "vendor_pn", "q": "qty"}'
+              />
+            </div>
+
+            <div className="space-y-1.5">
+              <Label htmlFor="edit-priority">優先級</Label>
+              <Input
+                id="edit-priority"
+                type="number"
+                min="1"
+                max="100"
+                value={editPriority}
+                onChange={(e) => setEditPriority(Number(e.target.value))}
+                className="w-32"
+              />
+            </div>
+
+            {editError && (
+              <div className="flex items-start gap-2 text-sm text-red-600 bg-red-50 p-3 rounded">
+                <AlertTriangle className="size-4 shrink-0 mt-0.5" />
+                <span>{editError}</span>
+              </div>
+            )}
+          </div>
+
+          <DialogFooter>
+            <Button type="button" variant="outline" onClick={closeEditDialog}>
+              取消
+            </Button>
+            <Button
+              type="button"
+              onClick={handleUpdatePattern}
+              disabled={isEditing}
+            >
+              {isEditing ? (
+                <>
+                  <Loader2 className="size-4 animate-spin" />
+                  儲存中...
+                </>
+              ) : (
+                '儲存'
+              )}
+            </Button>
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
+
+      {/* Delete Confirmation Dialog */}
+      <Dialog
+        open={!!deleteTarget}
+        onOpenChange={(open) => {
+          if (!open) closeDeleteDialog();
+        }}
+      >
+        <DialogContent>
+          <DialogHeader>
+            <DialogTitle>刪除條碼規則</DialogTitle>
+            <DialogDescription>
+              確定要停用「{deleteTarget?.pattern_name}」嗎？此操作會將規則設為停用狀態，可在「顯示已停用」中重新啟用。
+            </DialogDescription>
+          </DialogHeader>
+
+          {deleteError && (
+            <div className="flex items-start gap-2 text-sm text-red-600 bg-red-50 p-3 rounded">
+              <AlertTriangle className="size-4 shrink-0 mt-0.5" />
+              <span>{deleteError}</span>
+            </div>
+          )}
+
+          <DialogFooter>
+            <Button type="button" variant="outline" onClick={closeDeleteDialog}>
+              取消
+            </Button>
+            <Button
+              type="button"
+              variant="destructive"
+              onClick={handleDeletePattern}
+              disabled={isDeleting}
+            >
+              {isDeleting ? (
+                <>
+                  <Loader2 className="size-4 animate-spin" />
+                  處理中...
+                </>
+              ) : (
+                <>
+                  <Trash2 className="size-4" />
+                  確認停用
+                </>
+              )}
+            </Button>
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
 
       {/* Test Parse Box */}
       <div className="bg-white rounded-lg border border-slate-200 p-6 shadow-sm max-w-2xl self-start">
