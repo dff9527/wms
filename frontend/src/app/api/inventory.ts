@@ -28,20 +28,57 @@ function mapToInventoryLotRow(data: any): InventoryLotRow {
   };
 }
 
-export async function getInventoryLots(params?: {
+export type InventorySortBy =
+  | 'internal_sku'
+  | 'internal_lot_number'
+  | 'quantity_on_hand'
+  | 'quantity_reserved'
+  | 'receive_date'
+  | 'expiry_date'
+  | 'lot_status'
+  | 'location_code';
+
+export interface InventoryLotsParams {
   sku?: string;
   status?: string[];
   location?: string;
   vendor?: number;
-}): Promise<InventoryLotRow[]> {
+  page?: number;
+  pageSize?: number;
+  sortBy?: InventorySortBy;
+  order?: 'asc' | 'desc';
+  search?: string;
+}
+
+export interface InventoryLotsPage {
+  items: InventoryLotRow[];
+  total: number;
+  page: number;
+  pageSize: number;
+  totalPages: number;
+}
+
+export async function getInventoryLots(params?: InventoryLotsParams): Promise<InventoryLotsPage> {
   const queryParams = new URLSearchParams();
   if (params?.sku) queryParams.append('sku', params.sku);
   if (params?.status) params.status.forEach((s) => queryParams.append('status', s));
   if (params?.location) queryParams.append('location', params.location);
   if (params?.vendor) queryParams.append('vendor', String(params.vendor));
+  if (params?.page) queryParams.append('page', String(params.page));
+  if (params?.pageSize) queryParams.append('page_size', String(params.pageSize));
+  if (params?.sortBy) queryParams.append('sort_by', params.sortBy);
+  if (params?.order) queryParams.append('order', params.order);
+  if (params?.search) queryParams.append('search', params.search);
 
   const response = await axios.get(`${API_BASE_URL}/inventory/lots?${queryParams.toString()}`);
-  return response.data.map(mapToInventoryLotRow);
+  const rawItems = Array.isArray(response.data) ? response.data : response.data.items;
+  return {
+    items: rawItems.map(mapToInventoryLotRow),
+    total: response.data.total ?? rawItems.length,
+    page: response.data.page ?? 1,
+    pageSize: response.data.page_size ?? rawItems.length,
+    totalPages: response.data.total_pages ?? (rawItems.length ? 1 : 0),
+  };
 }
 
 export async function getInventoryLotDetail(lotId: number): Promise<InventoryLotRow> {
@@ -86,6 +123,7 @@ export function useInventoryLots(params?: Parameters<typeof getInventoryLots>[0]
   return useQuery({
     queryKey: ['inventory-lots', params],
     queryFn: () => getInventoryLots(params),
+    placeholderData: (previousData) => previousData,
   });
 }
 

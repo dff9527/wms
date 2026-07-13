@@ -8,6 +8,7 @@ from app.api.v1 import picking as picking_v1
 from app.api.v1 import shipping as shipping_v1
 from app.api.v1 import traceability as traceability_v1
 from app.api.v1 import purchase_orders as purchase_orders_v1
+from app.api.v1 import dashboard as dashboard_v1
 from app.api.v1.auth import router as auth_router
 from app.api.v1.customers import router as customers_router
 from app.api.v1.barcodes import router as barcodes_router
@@ -39,6 +40,11 @@ app.include_router(
 )  # 變成 /api/v1/vendors/*
 app.include_router(purchase_orders_v1.router, dependencies=[Depends(get_current_user)])
 app.include_router(users_router)
+app.include_router(
+    dashboard_v1.router,
+    prefix="/api/v1/dashboard",
+    dependencies=[Depends(get_current_user)],
+)
 
 app.add_middleware(
     CORSMiddleware,

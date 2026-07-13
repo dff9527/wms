@@ -1,4 +1,16 @@
-import { Tooltip, ResponsiveContainer, PieChart, Pie, Cell } from 'recharts';
+import {
+  Bar,
+  BarChart,
+  CartesianGrid,
+  Cell,
+  Legend,
+  Pie,
+  PieChart,
+  ResponsiveContainer,
+  Tooltip,
+  XAxis,
+  YAxis,
+} from 'recharts';
 import {
   Package,
   TrendingUp,
@@ -11,14 +23,37 @@ import {
 import axios from 'axios';
 import { useQuery } from '@tanstack/react-query';
 import { useInventoryLots } from '../api/inventory';
+import { useDailyTrend, useRecentActivities, useTodayReceiving } from '../api/dashboard';
 import type { InventoryLotRow } from '../types/wms-inventory';
 
 export default function DashboardModule() {
   // --- Data Fetching ---
 
   // 1. Inventory Lots
-  const { data: lotsData, isLoading: isLotsLoading, isError: isLotsError } = useInventoryLots({});
-  const lots: InventoryLotRow[] = Array.isArray(lotsData) ? lotsData : [];
+  const {
+    data: lotsData,
+    isLoading: isLotsLoading,
+    isError: isLotsError,
+  } = useInventoryLots({
+    pageSize: 1000,
+  });
+  const lots: InventoryLotRow[] = lotsData?.items ?? [];
+
+  const {
+    data: todayReceiving,
+    isLoading: isTodayReceivingLoading,
+    isError: isTodayReceivingError,
+  } = useTodayReceiving();
+  const {
+    data: dailyTrend = [],
+    isLoading: isTrendLoading,
+    isError: isTrendError,
+  } = useDailyTrend();
+  const {
+    data: recentActivities = [],
+    isLoading: isActivitiesLoading,
+    isError: isActivitiesError,
+  } = useRecentActivities();
 
   // Compute inventory stats from lots
   let totalQtyOnHand = 0;
@@ -97,8 +132,20 @@ export default function DashboardModule() {
 
   // --- Derived UI State ---
 
-  const isGlobalLoading = isLotsLoading && isPicksLoading && isShipmentsLoading;
-  const hasAnyError = isLotsError || isPicksError || isShipmentsError;
+  const isGlobalLoading =
+    isLotsLoading &&
+    isPicksLoading &&
+    isShipmentsLoading &&
+    isTodayReceivingLoading &&
+    isTrendLoading &&
+    isActivitiesLoading;
+  const hasAnyError =
+    isLotsError ||
+    isPicksError ||
+    isShipmentsError ||
+    isTodayReceivingError ||
+    isTrendError ||
+    isActivitiesError;
 
   // FIX: [fix_2] — Add explicit type annotation to statsData array to resolve TS2353 union property errors
   const statsData: Array<{
@@ -109,7 +156,6 @@ export default function DashboardModule() {
     color: string;
     change: string;
     isEmpty?: boolean;
-    isMock?: boolean;
   }> = [
     {
       title: '總庫存量',
@@ -140,12 +186,12 @@ export default function DashboardModule() {
     },
     {
       title: '今日收貨',
-      value: '—',
+      value: String(todayReceiving?.count ?? 0),
       unit: '批次',
       icon: TrendingUp,
       color: 'bg-green-500',
       change: '',
-      isMock: true, // No backing endpoint
+      isEmpty: false,
     },
   ];
 
@@ -179,13 +225,8 @@ export default function DashboardModule() {
         {statsData.map((stat, idx) => (
           <div
             key={idx}
-            className={`bg-white rounded-lg border ${stat.isMock ? 'border-dashed border-slate-300' : 'border-slate-200'} p-6 relative overflow-hidden`}
+            className="relative overflow-hidden rounded-lg border border-slate-200 bg-white p-6"
           >
-            {stat.isMock && (
-              <span className="absolute top-2 right-2 px-1.5 py-0.5 bg-slate-100 text-[10px] tracking-wider font-bold text-slate-500 rounded">
-                尚未提供
-              </span>
-            )}
             <div className="flex items-start justify-between">
               <div>
                 <p className="text-sm text-slate-600 mb-1">{stat.title}</p>
@@ -194,7 +235,7 @@ export default function DashboardModule() {
                   <span className="text-sm text-slate-500">{stat.unit}</span>
                 </div>
                 {/* Removed fabricated change percentage */}
-                {!stat.isEmpty && !stat.isMock && stat.change && (
+                {!stat.isEmpty && stat.change && (
                   <p
                     className={`text-sm mt-2 ${stat.change.startsWith('+') ? 'text-green-600' : 'text-red-600'}`}
                   >
@@ -213,15 +254,19 @@ export default function DashboardModule() {
 
       {/* Charts */}
       <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
-        {/* Bar Chart - Mock/No Endpoint */}
-        <div className="bg-white rounded-lg border border-dashed border-slate-300 p-6 relative min-h-[400px] flex flex-col">
-          <span className="absolute top-4 right-4 px-1.5 py-0.5 bg-slate-100 text-[10px] tracking-wider font-bold text-slate-500 rounded">
-            尚未提供
-          </span>
+        <div className="flex min-h-[400px] flex-col rounded-lg border border-slate-200 bg-white p-6">
           <h3 className="text-lg font-semibold text-slate-900 mb-4">每日收發貨趨勢</h3>
-          <div className="flex-1 flex items-center justify-center text-slate-400 italic">
-            無歷史交易資料來源
-          </div>
+          <ResponsiveContainer width="100%" height={320}>
+            <BarChart data={dailyTrend}>
+              <CartesianGrid strokeDasharray="3 3" vertical={false} />
+              <XAxis dataKey="date" tickFormatter={(value: string) => value.slice(5)} />
+              <YAxis allowDecimals={false} />
+              <Tooltip formatter={(value: number) => value.toLocaleString()} />
+              <Legend />
+              <Bar dataKey="receiving" name="收貨" fill="#10b981" radius={[4, 4, 0, 0]} />
+              <Bar dataKey="shipping" name="出貨" fill="#8b5cf6" radius={[4, 4, 0, 0]} />
+            </BarChart>
+          </ResponsiveContainer>
         </div>
 
         {/* Pie Chart - Real Data from Inventory Lots */}
@@ -255,15 +300,41 @@ export default function DashboardModule() {
         </div>
       </div>
 
-      {/* Recent Activities - Mock/No Endpoint */}
-      <div className="bg-white rounded-lg border border-dashed border-slate-300 p-6 relative min-h-[200px] flex flex-col">
-        <span className="absolute top-4 right-4 px-1.5 py-0.5 bg-slate-100 text-[10px] tracking-wider font-bold text-slate-500 rounded">
-          尚未提供
-        </span>
+      <div className="flex min-h-[200px] flex-col rounded-lg border border-slate-200 bg-white p-6">
         <h3 className="text-lg font-semibold text-slate-900 mb-4">最近活動</h3>
-        <div className="flex-1 flex items-center justify-center text-slate-400 italic">
-          無即時活動串流來源
-        </div>
+        {recentActivities.length === 0 ? (
+          <div className="flex flex-1 items-center justify-center text-slate-400 italic">
+            尚無交易活動
+          </div>
+        ) : (
+          <div className="divide-y divide-slate-100">
+            {recentActivities.map((activity) => (
+              <div
+                key={activity.id}
+                className="flex items-center justify-between gap-4 py-3 text-sm"
+              >
+                <div className="min-w-0">
+                  <p className="font-medium text-slate-900">
+                    {activity.type} · {activity.internalSku || '未指定料號'}
+                  </p>
+                  <p className="truncate text-xs text-slate-500">
+                    {activity.internalLotNumber || `Lot #${activity.lotId ?? '—'}`} ·{' '}
+                    {activity.executedBy}
+                  </p>
+                </div>
+                <div className="shrink-0 text-right">
+                  <p className={activity.quantityChange >= 0 ? 'text-green-600' : 'text-red-600'}>
+                    {activity.quantityChange > 0 ? '+' : ''}
+                    {activity.quantityChange.toLocaleString()}
+                  </p>
+                  <p className="text-xs text-slate-400">
+                    {new Date(activity.executedAt).toLocaleString('zh-TW')}
+                  </p>
+                </div>
+              </div>
+            ))}
+          </div>
+        )}
       </div>
     </div>
   );

@@ -1,11 +1,12 @@
 from fastapi import APIRouter, Depends, HTTPException, Query
 from sqlalchemy.orm import Session
-from typing import List, Optional
+from typing import List, Literal, Optional
 
 from app.api.deps import get_db, require_role
 from app.services.inventory_service import InventoryService
 from app.schemas.inventory import (
     LotOut,
+    LotPageOut,
     LotListQuery,
     AdjustRequest,
     SplitRequest,
@@ -16,16 +17,38 @@ from app.schemas.inventory import (
 router = APIRouter(tags=["Inventory"])
 
 
-@router.get("/lots", response_model=List[LotOut])
+@router.get("/lots", response_model=LotPageOut)
 def list_lots(
     sku: Optional[str] = None,
     status: Optional[List[str]] = Query(None),
     location: Optional[str] = None,
     vendor: Optional[int] = None,
+    page: int = Query(1, ge=1),
+    page_size: int = Query(20, ge=1, le=1000),
+    sort_by: Literal[
+        "internal_sku",
+        "internal_lot_number",
+        "quantity_on_hand",
+        "quantity_reserved",
+        "receive_date",
+        "expiry_date",
+        "lot_status",
+        "location_code",
+    ] = "receive_date",
+    order: Literal["asc", "desc"] = "desc",
+    search: Optional[str] = Query(None, max_length=128),
     db: Session = Depends(get_db),
 ):
     query_params = LotListQuery(
-        sku=sku, status=status, location=location, vendor=vendor
+        sku=sku,
+        status=status,
+        location=location,
+        vendor=vendor,
+        page=page,
+        page_size=page_size,
+        sort_by=sort_by,
+        order=order,
+        search=search,
     )
     service = InventoryService(db)
     return service.get_lots(query_params)

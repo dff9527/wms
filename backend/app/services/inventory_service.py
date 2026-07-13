@@ -1,9 +1,13 @@
-from typing import List, Optional
+from math import ceil
+from typing import Optional
+
+from sqlalchemy import or_
 from sqlalchemy.orm import Session
 
 from app.core.warehouse.adjustment import AdjustmentService
-from app.schemas.inventory import LotOut, LotListQuery
+from app.schemas.inventory import LotOut, LotListQuery, LotPageOut
 from app.models.inventory import InventoryLot  # type: ignore
+from app.models.item import Item
 from app.models.storage import StorageLocation  # type: ignore
 
 
@@ -12,16 +16,24 @@ class InventoryService:
         self.db = db
         self.adjustment_svc = AdjustmentService(db)
 
-    def get_lots(self, query_params: LotListQuery) -> List[LotOut]:
+    def get_lots(self, query_params: LotListQuery) -> LotPageOut:
         """
         Query lots with filters. Default excludes SHIPPED/EXPIRED/VOID.
         """
         excluded_statuses = query_params.get_excluded_statuses()
 
-        stmt = self.db.query(
-            InventoryLot, StorageLocation.location_code.label("location_code")
-        ).outerjoin(
-            StorageLocation, InventoryLot.location_id == StorageLocation.location_id
+        stmt = (
+            self.db.query(
+                InventoryLot,
+                StorageLocation.location_code.label("location_code"),
+                Item.description.label("description"),
+                Item.msl_level.label("msl_level"),
+            )
+            .outerjoin(
+                StorageLocation,
+                InventoryLot.location_id == StorageLocation.location_id,
+            )
+            .outerjoin(Item, InventoryLot.internal_sku == Item.internal_sku)
         )
 
         if query_params.sku:
@@ -41,18 +53,61 @@ class InventoryService:
         if query_params.vendor:
             stmt = stmt.filter(InventoryLot.vendor_id == query_params.vendor)
 
-        results = stmt.all()
-
-        # Map to Pydantic models
-        lots_out = []
-        for lot, loc_code in results:
-            lots_out.append(
-                LotOut.model_validate(lot).model_copy(
-                    update={"location_code": loc_code}
+        if query_params.search:
+            term = f"%{query_params.search.strip()}%"
+            stmt = stmt.filter(
+                or_(
+                    InventoryLot.internal_sku.ilike(term),
+                    InventoryLot.internal_lot_number.ilike(term),
+                    InventoryLot.internal_barcode.ilike(term),
+                    InventoryLot.vendor_lot_code.ilike(term),
+                    InventoryLot.vendor_pn.ilike(term),
+                    StorageLocation.location_code.ilike(term),
                 )
             )
 
-        return lots_out
+        sort_columns = {
+            "internal_sku": InventoryLot.internal_sku,
+            "internal_lot_number": InventoryLot.internal_lot_number,
+            "quantity_on_hand": InventoryLot.quantity_on_hand,
+            "quantity_reserved": InventoryLot.quantity_reserved,
+            "receive_date": InventoryLot.receive_date,
+            "expiry_date": InventoryLot.expiry_date,
+            "lot_status": InventoryLot.lot_status,
+            "location_code": StorageLocation.location_code,
+        }
+        sort_column = sort_columns[query_params.sort_by]
+        direction = (
+            sort_column.asc() if query_params.order == "asc" else sort_column.desc()
+        )
+        total = stmt.count()
+        results = (
+            stmt.order_by(direction, InventoryLot.lot_id.desc())
+            .offset((query_params.page - 1) * query_params.page_size)
+            .limit(query_params.page_size)
+            .all()
+        )
+
+        # Map to Pydantic models
+        lots_out = []
+        for lot, loc_code, description, msl_level in results:
+            lots_out.append(
+                LotOut.model_validate(lot).model_copy(
+                    update={
+                        "location_code": loc_code,
+                        "description": description,
+                        "msl_level": msl_level,
+                    }
+                )
+            )
+
+        return LotPageOut(
+            items=lots_out,
+            total=total,
+            page=query_params.page,
+            page_size=query_params.page_size,
+            total_pages=ceil(total / query_params.page_size) if total else 0,
+        )
 
     def get_lot_detail(self, lot_id: int) -> Optional[LotOut]:
         """Get detailed info for a single lot."""

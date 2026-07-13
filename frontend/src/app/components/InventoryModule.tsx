@@ -1,6 +1,7 @@
-import { useState } from 'react';
+import { useEffect, useState } from 'react';
 import {
   AlertCircle,
+  ArrowUpDown,
   Calendar,
   Download,
   Loader2,
@@ -20,6 +21,7 @@ import {
   useUpdateLotMutation,
   useVoidLotMutation,
 } from '../api/inventory';
+import type { InventorySortBy } from '../api/inventory';
 import { getRole } from '../api/auth';
 import { exportCsv } from '../utils/exportCsv';
 import { Button } from './ui/button';
@@ -33,6 +35,14 @@ import {
 } from './ui/dialog';
 import { Input } from './ui/input';
 import { Label } from './ui/label';
+import {
+  Pagination,
+  PaginationContent,
+  PaginationItem,
+  PaginationLink,
+  PaginationNext,
+  PaginationPrevious,
+} from './ui/pagination';
 
 function getStatusBadge(status: InventoryLotRowStatus | string | undefined | null) {
   const rawStatus = String(status ?? '');
@@ -66,6 +76,11 @@ export default function InventoryModule() {
   const canOperateLots = ['admin', 'supervisor'].includes(role);
 
   const [searchTerm, setSearchTerm] = useState('');
+  const [debouncedSearch, setDebouncedSearch] = useState('');
+  const [page, setPage] = useState(1);
+  const [pageSize, setPageSize] = useState(20);
+  const [sortBy, setSortBy] = useState<InventorySortBy>('receive_date');
+  const [sortOrder, setSortOrder] = useState<'asc' | 'desc'>('desc');
   const [selectedLot, setSelectedLot] = useState<InventoryLotRow | null>(null);
   const [actionForm, setActionForm] = useState<'adjust' | 'split' | null>(null);
   const [adjustQty, setAdjustQty] = useState('');
@@ -81,20 +96,40 @@ export default function InventoryModule() {
   const splitMutation = useSplitLotMutation();
   const updateLotMutation = useUpdateLotMutation();
   const voidLotMutation = useVoidLotMutation();
-  const { data: lotsData, isPending, isError, error } = useInventoryLots({});
+  useEffect(() => {
+    const timeout = window.setTimeout(() => {
+      setDebouncedSearch(searchTerm.trim());
+      setPage(1);
+    }, 300);
+    return () => window.clearTimeout(timeout);
+  }, [searchTerm]);
 
-  const inventoryData: InventoryLotRow[] = lotsData ?? [];
-  const term = searchTerm.trim().toLowerCase();
-  const filteredData = term
-    ? inventoryData.filter((lot) =>
-        [lot.internalSku, lot.internalLotNumber, lot.internalBarcode, lot.vendorLotCode, lot.location].some(
-          (value) =>
-            String(value ?? '')
-              .toLowerCase()
-              .includes(term)
-        )
-      )
-    : inventoryData;
+  const {
+    data: lotsData,
+    isPending,
+    isError,
+    error,
+  } = useInventoryLots({
+    page,
+    pageSize,
+    sortBy,
+    order: sortOrder,
+    search: debouncedSearch || undefined,
+  });
+
+  const inventoryData: InventoryLotRow[] = lotsData?.items ?? [];
+  const total = lotsData?.total ?? 0;
+  const totalPages = lotsData?.totalPages ?? 0;
+
+  const handleSort = (column: InventorySortBy) => {
+    if (sortBy === column) {
+      setSortOrder((current) => (current === 'asc' ? 'desc' : 'asc'));
+    } else {
+      setSortBy(column);
+      setSortOrder('asc');
+    }
+    setPage(1);
+  };
 
   const handleExport = () => {
     const d = new Date();
@@ -103,8 +138,19 @@ export default function InventoryModule() {
     ).padStart(2, '0')}`;
     exportCsv(
       `inventory_${ymd}.csv`,
-      ['料號', '內部批號', '內部條碼', '供應商批號', '儲位', '可用量', '預留量', '收貨日期', 'MSL', '狀態'],
-      filteredData.map((lot) => [
+      [
+        '料號',
+        '內部批號',
+        '內部條碼',
+        '供應商批號',
+        '儲位',
+        '可用量',
+        '預留量',
+        '收貨日期',
+        'MSL',
+        '狀態',
+      ],
+      inventoryData.map((lot) => [
         lot.internalSku,
         lot.internalLotNumber,
         lot.internalBarcode,
@@ -194,7 +240,10 @@ export default function InventoryModule() {
       toast.success('批次資料已更新');
       setEditLot(null);
       if (selectedLot?.id === editLot.id) {
-        setSelectedLot({ ...selectedLot, location: editLocationCode.trim() || selectedLot.location });
+        setSelectedLot({
+          ...selectedLot,
+          location: editLocationCode.trim() || selectedLot.location,
+        });
       }
     } catch (err: any) {
       const message = err?.response?.data?.detail || err?.message || '更新批次資料失敗';
@@ -256,7 +305,25 @@ export default function InventoryModule() {
               className="w-full rounded-lg border border-slate-300 py-2 pl-10 pr-4 focus:outline-none focus:ring-2 focus:ring-blue-500"
             />
           </div>
-          <Button type="button" variant="outline" onClick={handleExport} disabled={filteredData.length === 0}>
+          <select
+            value={pageSize}
+            onChange={(event) => {
+              setPageSize(Number(event.target.value));
+              setPage(1);
+            }}
+            className="rounded-md border border-slate-300 bg-white px-3 py-2 text-sm"
+            aria-label="每頁筆數"
+          >
+            <option value={10}>每頁 10 筆</option>
+            <option value={20}>每頁 20 筆</option>
+            <option value={50}>每頁 50 筆</option>
+          </select>
+          <Button
+            type="button"
+            variant="outline"
+            onClick={handleExport}
+            disabled={inventoryData.length === 0}
+          >
             <Download className="size-4" />
             匯出 CSV
           </Button>
@@ -267,11 +334,11 @@ export default function InventoryModule() {
         <div className="border-b border-slate-200 p-6">
           <h2 className="text-xl font-semibold text-slate-900">庫存明細 (Lot 級別)</h2>
           <p className="mt-1 text-sm text-slate-500">
-            總計 {filteredData.length} 個批次{term ? `(已過濾，全部 ${inventoryData.length})` : ''}
+            共 {total} 個批次{debouncedSearch ? `（搜尋「${debouncedSearch}」）` : ''}
           </p>
         </div>
 
-        {filteredData.length === 0 ? (
+        {inventoryData.length === 0 ? (
           <div className="flex flex-col items-center justify-center py-12 text-slate-400">
             <MapPin className="mb-2 size-12" />
             <p className="text-sm">暫無符合條件的庫存批次</p>
@@ -281,28 +348,82 @@ export default function InventoryModule() {
             <table className="min-w-[1280px] w-full">
               <thead className="bg-slate-50">
                 <tr className="border-b border-slate-200">
-                  <th className="px-3 py-3 text-left text-sm font-medium text-slate-600">料號</th>
-                  <th className="px-3 py-3 text-left text-sm font-medium text-slate-600">內部批號</th>
-                  <th className="px-3 py-3 text-left text-sm font-medium text-slate-600">內部條碼</th>
-                  <th className="px-3 py-3 text-left text-sm font-medium text-slate-600">供應商批號</th>
-                  <th className="px-3 py-3 text-left text-sm font-medium text-slate-600">儲位</th>
-                  <th className="px-3 py-3 text-right text-sm font-medium text-slate-600">可用量</th>
-                  <th className="px-3 py-3 text-right text-sm font-medium text-slate-600">預留量</th>
-                  <th className="px-3 py-3 text-left text-sm font-medium text-slate-600">收貨日期</th>
+                  <th className="px-3 py-3 text-left text-sm font-medium text-slate-600">
+                    <button
+                      type="button"
+                      onClick={() => handleSort('internal_sku')}
+                      className="flex items-center gap-1"
+                    >
+                      料號 <ArrowUpDown className="size-3" />
+                    </button>
+                  </th>
+                  <th className="px-3 py-3 text-left text-sm font-medium text-slate-600">
+                    <button
+                      type="button"
+                      onClick={() => handleSort('internal_lot_number')}
+                      className="flex items-center gap-1"
+                    >
+                      內部批號 <ArrowUpDown className="size-3" />
+                    </button>
+                  </th>
+                  <th className="px-3 py-3 text-left text-sm font-medium text-slate-600">
+                    內部條碼
+                  </th>
+                  <th className="px-3 py-3 text-left text-sm font-medium text-slate-600">
+                    供應商批號
+                  </th>
+                  <th className="px-3 py-3 text-left text-sm font-medium text-slate-600">
+                    <button
+                      type="button"
+                      onClick={() => handleSort('location_code')}
+                      className="flex items-center gap-1"
+                    >
+                      儲位 <ArrowUpDown className="size-3" />
+                    </button>
+                  </th>
+                  <th className="px-3 py-3 text-right text-sm font-medium text-slate-600">
+                    <button
+                      type="button"
+                      onClick={() => handleSort('quantity_on_hand')}
+                      className="ml-auto flex items-center gap-1"
+                    >
+                      可用量 <ArrowUpDown className="size-3" />
+                    </button>
+                  </th>
+                  <th className="px-3 py-3 text-right text-sm font-medium text-slate-600">
+                    <button
+                      type="button"
+                      onClick={() => handleSort('quantity_reserved')}
+                      className="ml-auto flex items-center gap-1"
+                    >
+                      預留量 <ArrowUpDown className="size-3" />
+                    </button>
+                  </th>
+                  <th className="px-3 py-3 text-left text-sm font-medium text-slate-600">
+                    <button
+                      type="button"
+                      onClick={() => handleSort('receive_date')}
+                      className="flex items-center gap-1"
+                    >
+                      收貨日期 <ArrowUpDown className="size-3" />
+                    </button>
+                  </th>
                   <th className="px-3 py-3 text-center text-sm font-medium text-slate-600">MSL</th>
                   <th className="px-3 py-3 text-center text-sm font-medium text-slate-600">狀態</th>
                   <th className="px-3 py-3 text-center text-sm font-medium text-slate-600">操作</th>
                 </tr>
               </thead>
               <tbody>
-                {filteredData.map((lot) => (
+                {inventoryData.map((lot) => (
                   <tr
                     key={lot.id}
                     className="cursor-pointer border-b border-slate-100 hover:bg-slate-50"
                     onClick={() => setSelectedLot(lot)}
                   >
                     <td className="px-3 py-3">
-                      <div className="text-sm font-mono font-medium text-slate-900">{lot.internalSku}</div>
+                      <div className="text-sm font-mono font-medium text-slate-900">
+                        {lot.internalSku}
+                      </div>
                       <div className="text-xs text-slate-500">{lot.description}</div>
                     </td>
                     <td className="whitespace-nowrap px-3 py-3 text-sm font-mono text-slate-900">
@@ -327,7 +448,9 @@ export default function InventoryModule() {
                     <td className="px-3 py-3 text-right text-sm text-slate-600">
                       {lot.qtyReserved.toLocaleString()}
                     </td>
-                    <td className="whitespace-nowrap px-3 py-3 text-sm text-slate-700">{lot.receiveDate}</td>
+                    <td className="whitespace-nowrap px-3 py-3 text-sm text-slate-700">
+                      {lot.receiveDate}
+                    </td>
                     <td className="px-3 py-3 text-center">
                       <span className="inline-flex size-6 items-center justify-center rounded bg-slate-100 text-xs font-medium text-slate-700">
                         {lot.mslLevel}
@@ -335,7 +458,10 @@ export default function InventoryModule() {
                     </td>
                     <td className="px-3 py-3 text-center">{getStatusBadge(lot.status)}</td>
                     <td className="px-3 py-3 text-center">
-                      <button type="button" className="text-sm font-medium text-blue-600 hover:text-blue-800">
+                      <button
+                        type="button"
+                        className="text-sm font-medium text-blue-600 hover:text-blue-800"
+                      >
                         詳情
                       </button>
                     </td>
@@ -343,6 +469,53 @@ export default function InventoryModule() {
                 ))}
               </tbody>
             </table>
+          </div>
+        )}
+
+        {totalPages > 1 && (
+          <div className="border-t border-slate-200 px-4 py-3">
+            <Pagination>
+              <PaginationContent>
+                <PaginationItem>
+                  <PaginationPrevious
+                    href="#"
+                    aria-disabled={page <= 1}
+                    className={page <= 1 ? 'pointer-events-none opacity-50' : undefined}
+                    onClick={(event) => {
+                      event.preventDefault();
+                      setPage((current) => Math.max(1, current - 1));
+                    }}
+                  />
+                </PaginationItem>
+                {Array.from({ length: totalPages }, (_, index) => index + 1)
+                  .filter((pageNumber) => Math.abs(pageNumber - page) <= 2)
+                  .map((pageNumber) => (
+                    <PaginationItem key={pageNumber}>
+                      <PaginationLink
+                        href="#"
+                        isActive={pageNumber === page}
+                        onClick={(event) => {
+                          event.preventDefault();
+                          setPage(pageNumber);
+                        }}
+                      >
+                        {pageNumber}
+                      </PaginationLink>
+                    </PaginationItem>
+                  ))}
+                <PaginationItem>
+                  <PaginationNext
+                    href="#"
+                    aria-disabled={page >= totalPages}
+                    className={page >= totalPages ? 'pointer-events-none opacity-50' : undefined}
+                    onClick={(event) => {
+                      event.preventDefault();
+                      setPage((current) => Math.min(totalPages, current + 1));
+                    }}
+                  />
+                </PaginationItem>
+              </PaginationContent>
+            </Pagination>
           </div>
         )}
       </div>
@@ -358,7 +531,11 @@ export default function InventoryModule() {
           >
             <div className="mb-6 flex items-center justify-between">
               <h3 className="text-xl font-semibold text-slate-900">批次詳情</h3>
-              <button type="button" onClick={closeDetailDialog} className="text-slate-400 hover:text-slate-600">
+              <button
+                type="button"
+                onClick={closeDetailDialog}
+                className="text-slate-400 hover:text-slate-600"
+              >
                 <span className="text-2xl">&times;</span>
               </button>
             </div>
@@ -367,7 +544,9 @@ export default function InventoryModule() {
               <div className="grid grid-cols-2 gap-4">
                 <div>
                   <label className="text-sm text-slate-600">料號</label>
-                  <p className="text-lg font-mono font-semibold text-slate-900">{selectedLot.internalSku}</p>
+                  <p className="text-lg font-mono font-semibold text-slate-900">
+                    {selectedLot.internalSku}
+                  </p>
                   <p className="text-sm text-slate-500">{selectedLot.description}</p>
                 </div>
                 <div>
@@ -379,26 +558,36 @@ export default function InventoryModule() {
               <div className="grid grid-cols-1 gap-3 border-t border-slate-200 pt-4">
                 <div>
                   <label className="text-sm text-slate-600">內部批號</label>
-                  <p className="text-base font-mono font-medium text-slate-900">{selectedLot.internalLotNumber}</p>
+                  <p className="text-base font-mono font-medium text-slate-900">
+                    {selectedLot.internalLotNumber}
+                  </p>
                 </div>
                 <div>
                   <label className="text-sm text-slate-600">內部條碼</label>
-                  <p className="text-base font-mono font-medium text-slate-900">{selectedLot.internalBarcode}</p>
+                  <p className="text-base font-mono font-medium text-slate-900">
+                    {selectedLot.internalBarcode}
+                  </p>
                 </div>
                 <div>
                   <label className="text-sm text-slate-600">供應商批號</label>
-                  <p className="text-base font-mono font-medium text-slate-900">{selectedLot.vendorLotCode}</p>
+                  <p className="text-base font-mono font-medium text-slate-900">
+                    {selectedLot.vendorLotCode}
+                  </p>
                 </div>
               </div>
 
               <div className="grid grid-cols-3 gap-4 border-t border-slate-200 pt-4">
                 <div>
                   <label className="text-sm text-slate-600">可用量</label>
-                  <p className="text-xl font-bold text-green-600">{selectedLot.qtyOnHand.toLocaleString()}</p>
+                  <p className="text-xl font-bold text-green-600">
+                    {selectedLot.qtyOnHand.toLocaleString()}
+                  </p>
                 </div>
                 <div>
                   <label className="text-sm text-slate-600">預留量</label>
-                  <p className="text-xl font-bold text-blue-600">{selectedLot.qtyReserved.toLocaleString()}</p>
+                  <p className="text-xl font-bold text-blue-600">
+                    {selectedLot.qtyReserved.toLocaleString()}
+                  </p>
                 </div>
                 <div>
                   <label className="text-sm text-slate-600">MSL 等級</label>
@@ -411,12 +600,16 @@ export default function InventoryModule() {
                   <Calendar className="size-4 text-slate-500" />
                   <div>
                     <label className="text-sm text-slate-600">收貨日期</label>
-                    <p className="text-base font-medium text-slate-900">{selectedLot.receiveDate}</p>
+                    <p className="text-base font-medium text-slate-900">
+                      {selectedLot.receiveDate}
+                    </p>
                   </div>
                 </div>
                 <div>
                   <label className="text-sm text-slate-600">到期日期</label>
-                  <p className="text-base font-medium text-slate-900">{selectedLot.expiryDate || 'N/A'}</p>
+                  <p className="text-base font-medium text-slate-900">
+                    {selectedLot.expiryDate || 'N/A'}
+                  </p>
                 </div>
               </div>
 
@@ -425,7 +618,9 @@ export default function InventoryModule() {
                   <MapPin className="size-4 text-blue-600" />
                   <label className="text-sm text-slate-600">儲位</label>
                 </div>
-                <p className="text-xl font-mono font-bold text-blue-600">{selectedLot.location || '—'}</p>
+                <p className="text-xl font-mono font-bold text-blue-600">
+                  {selectedLot.location || '—'}
+                </p>
               </div>
 
               <div className="border-t border-slate-200 pt-4">
@@ -436,7 +631,11 @@ export default function InventoryModule() {
               {isAdmin && (
                 <div className="border-t border-slate-200 pt-4">
                   <div className="flex flex-wrap gap-2">
-                    <Button type="button" variant="outline" onClick={() => openEditLotDialog(selectedLot)}>
+                    <Button
+                      type="button"
+                      variant="outline"
+                      onClick={() => openEditLotDialog(selectedLot)}
+                    >
                       <Pencil className="size-4" />
                       編輯批次
                     </Button>
@@ -485,7 +684,9 @@ export default function InventoryModule() {
                     <div className="space-y-3 rounded-lg bg-slate-50 p-4">
                       <div className="grid grid-cols-2 gap-3">
                         <div>
-                          <label className="mb-1 block text-xs text-slate-600">調整量(正數加、負數減)</label>
+                          <label className="mb-1 block text-xs text-slate-600">
+                            調整量(正數加、負數減)
+                          </label>
                           <Input
                             type="number"
                             value={adjustQty}
@@ -503,7 +704,11 @@ export default function InventoryModule() {
                           />
                         </div>
                       </div>
-                      <Button type="button" onClick={handleAdjust} disabled={adjustMutation.isPending}>
+                      <Button
+                        type="button"
+                        onClick={handleAdjust}
+                        disabled={adjustMutation.isPending}
+                      >
                         {adjustMutation.isPending ? '處理中…' : '確認調整'}
                       </Button>
                     </div>
@@ -524,7 +729,11 @@ export default function InventoryModule() {
                           className="w-48"
                         />
                       </div>
-                      <Button type="button" onClick={handleSplit} disabled={splitMutation.isPending}>
+                      <Button
+                        type="button"
+                        onClick={handleSplit}
+                        disabled={splitMutation.isPending}
+                      >
                         {splitMutation.isPending ? '處理中…' : '確認拆帶'}
                       </Button>
                     </div>
