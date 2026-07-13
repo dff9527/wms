@@ -15,6 +15,7 @@ from app.api.v1.barcodes import router as barcodes_router
 from app.api.v1.vendors import router as vendors_router
 from app.api.v1.users import router as users_router
 from app.api.v1.cycle_counts import router as cycle_counts_router
+from app.api.v1.returns import router as returns_router
 from app.api.deps import get_current_user
 
 app = FastAPI(title="WMS Semiconductor API", version="0.1.0")
@@ -42,6 +43,7 @@ app.include_router(
 app.include_router(purchase_orders_v1.router, dependencies=[Depends(get_current_user)])
 app.include_router(users_router)
 app.include_router(cycle_counts_router, dependencies=[Depends(get_current_user)])
+app.include_router(returns_router, dependencies=[Depends(get_current_user)])
 app.include_router(
     dashboard_v1.router,
     prefix="/api/v1/dashboard",

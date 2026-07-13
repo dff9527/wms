@@ -16,6 +16,7 @@ from app.models.order import (
 from app.models.user import User
 from app.models.cycle_count import CycleCount, CycleCountLine
 from app.models.label_print import LabelPrint
+from app.models.returns import ReturnOrder
 
 __all__ = [
     "Warehouse",
@@ -37,4 +38,5 @@ __all__ = [
     "CycleCount",
     "CycleCountLine",
     "LabelPrint",
+    "ReturnOrder",
 ]
