@@ -1,4 +1,5 @@
 from math import ceil
+from datetime import timedelta
 from typing import Optional
 
 from sqlalchemy import or_
@@ -11,6 +12,9 @@ from app.models.item import Item
 from app.models.storage import StorageLocation  # type: ignore
 from app.models.warehouse import LocationStatus
 from app.core.warehouse.putaway import PutAwayEngine
+from app.utils.time import utcnow
+
+MSL_FLOOR_LIFE_HOURS = {2: 8760, 3: 168, 4: 72, 5: 48, 6: 24}
 
 
 class InventoryService:
@@ -273,4 +277,60 @@ class InventoryService:
             "fromLocationId": source_id,
             "toLocationId": target.location_id,
             "targetLocationCode": target.location_code,
+        }
+
+    def open_msl_bag(self, lot_id: int) -> dict:
+        lot = (
+            self.db.query(InventoryLot)
+            .filter(InventoryLot.lot_id == lot_id)
+            .with_for_update(of=InventoryLot)
+            .first()
+        )
+        if not lot:
+            raise ValueError(f"Lot {lot_id} not found")
+        if lot.bag_opened_at:
+            raise ValueError(
+                "MSL bag has already been opened; bake it before reopening"
+            )
+        item = self.db.query(Item).filter(Item.internal_sku == lot.internal_sku).first()
+        level = item.msl_level if item else None
+        now = utcnow()
+        lot.bag_opened_at = now
+        hours = MSL_FLOOR_LIFE_HOURS.get(level)
+        if hours:
+            lot.expiry_date = (now + timedelta(hours=hours)).date()
+        lot.updated_at = now
+        self.db.commit()
+        return {
+            "success": True,
+            "lotId": lot.lot_id,
+            "mslLevel": level,
+            "bagOpenedAt": lot.bag_opened_at,
+            "expiryDate": lot.expiry_date,
+        }
+
+    def bake_msl_lot(self, lot_id: int) -> dict:
+        lot = (
+            self.db.query(InventoryLot)
+            .filter(InventoryLot.lot_id == lot_id)
+            .with_for_update(of=InventoryLot)
+            .first()
+        )
+        if not lot:
+            raise ValueError(f"Lot {lot_id} not found")
+        item = self.db.query(Item).filter(Item.internal_sku == lot.internal_sku).first()
+        level = item.msl_level if item else None
+        now = utcnow()
+        lot.bag_opened_at = None
+        lot.expiry_date = (
+            (now + timedelta(days=365)).date() if level and level > 1 else None
+        )
+        lot.updated_at = now
+        self.db.commit()
+        return {
+            "success": True,
+            "lotId": lot.lot_id,
+            "mslLevel": level,
+            "bagOpenedAt": None,
+            "expiryDate": lot.expiry_date,
         }

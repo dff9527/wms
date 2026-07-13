@@ -83,6 +83,32 @@ def move_lot(
         raise HTTPException(status_code=status, detail=str(exc)) from exc
 
 
+def msl_action(action):
+    try:
+        return action()
+    except ValueError as exc:
+        status = 404 if "not found" in str(exc).lower() else 400
+        raise HTTPException(status_code=status, detail=str(exc)) from exc
+
+
+@router.post("/lots/{lot_id}/open-bag")
+def open_msl_bag(
+    lot_id: int,
+    db: Session = Depends(get_db),
+    _user: dict = Depends(require_role("admin", "supervisor", "qc")),
+):
+    return msl_action(lambda: InventoryService(db).open_msl_bag(lot_id))
+
+
+@router.post("/lots/{lot_id}/bake")
+def bake_msl_lot(
+    lot_id: int,
+    db: Session = Depends(get_db),
+    _user: dict = Depends(require_role("admin", "supervisor", "qc")),
+):
+    return msl_action(lambda: InventoryService(db).bake_msl_lot(lot_id))
+
+
 @router.patch("/lots/{lot_id}", response_model=LotOut)
 def update_lot(
     lot_id: int,

@@ -56,6 +56,7 @@ class InventoryLot(Base):
     manufacture_date: Mapped[date | None] = mapped_column(Date)
     receive_date: Mapped[datetime] = mapped_column(DateTime, server_default=func.now())
     expiry_date: Mapped[date | None] = mapped_column(Date)
+    bag_opened_at: Mapped[datetime | None] = mapped_column(DateTime)
 
     lot_status: Mapped[str] = mapped_column(String(20), default="AVAILABLE")
 

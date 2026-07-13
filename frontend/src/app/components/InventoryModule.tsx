@@ -19,6 +19,7 @@ import {
   useAdjustLotMutation,
   useInventoryLots,
   useMoveLotMutation,
+  useMslBagMutation,
   useSplitLotMutation,
   useUpdateLotMutation,
   useVoidLotMutation,
@@ -99,6 +100,7 @@ export default function InventoryModule() {
   const adjustMutation = useAdjustLotMutation();
   const splitMutation = useSplitLotMutation();
   const moveMutation = useMoveLotMutation();
+  const mslMutation = useMslBagMutation();
   const updateLotMutation = useUpdateLotMutation();
   const voidLotMutation = useVoidLotMutation();
   useEffect(() => {
@@ -247,6 +249,17 @@ export default function InventoryModule() {
       const message = errDetail(err);
       setActionError(message);
       toast.error(message);
+    }
+  };
+
+  const handleMslAction = async (action: 'open-bag' | 'bake') => {
+    if (!selectedLot) return;
+    try {
+      await mslMutation.mutateAsync({ lotId: selectedLot.id, action });
+      toast.success(action === 'open-bag' ? '已開始計算 MSL floor life' : '烘烤完成，floor life 已重置');
+      closeDetailDialog();
+    } catch (err) {
+      toast.error(errDetail(err));
     }
   };
 
@@ -654,6 +667,18 @@ export default function InventoryModule() {
                 <label className="mb-2 block text-sm text-slate-600">狀態</label>
                 {getStatusBadge(selectedLot.status)}
               </div>
+
+              {selectedLot.mslLevel > 1 && ['admin', 'supervisor', 'qc'].includes(role) && (
+                <div className="border-t border-slate-200 pt-4">
+                  <p className="mb-2 text-sm text-slate-600">
+                    MSL 包裝：{selectedLot.bagOpenedAt ? `已拆封 ${selectedLot.bagOpenedAt}` : '密封'}
+                  </p>
+                  <div className="flex gap-2">
+                    {!selectedLot.bagOpenedAt && <Button type="button" variant="outline" disabled={mslMutation.isPending} onClick={() => handleMslAction('open-bag')}>拆封</Button>}
+                    {selectedLot.bagOpenedAt && <Button type="button" variant="outline" disabled={mslMutation.isPending} onClick={() => handleMslAction('bake')}>烘烤重置</Button>}
+                  </div>
+                </div>
+              )}
 
               {isAdmin && (
                 <div className="border-t border-slate-200 pt-4">

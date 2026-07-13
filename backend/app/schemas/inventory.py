@@ -22,6 +22,7 @@ class LotOut(BaseModel):
     manufacture_date: Optional[date]
     receive_date: Optional[datetime] = None
     expiry_date: Optional[date]
+    bag_opened_at: Optional[datetime] = None
     description: Optional[str] = None
     msl_level: Optional[int] = None
     quality_notes: Optional[str] = None

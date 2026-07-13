@@ -20,6 +20,7 @@ function mapToInventoryLotRow(data: any): InventoryLotRow {
     location: data.location_code,
     status: data.lot_status,
     expiryDate: data.expiry_date ?? null,
+    bagOpenedAt: data.bag_opened_at ?? null,
     // These fields are required by InventoryLotRow but not yet returned by LotOut; default until backend exposes them.
     vendorLotCode: data.vendor_lot_code ?? '',
     description: data.description ?? '',
@@ -112,6 +113,12 @@ export async function moveLot(payload: {
   return response.data;
 }
 
+export async function updateMslBag(lotId: number, action: 'open-bag' | 'bake') {
+  return axios
+    .post(`${API_BASE_URL}/inventory/lots/${lotId}/${action}`)
+    .then((response) => response.data);
+}
+
 export async function updateLot(payload: {
   lotId: number;
   locationCode?: string;
@@ -165,6 +172,15 @@ export function useMoveLotMutation() {
   const queryClient = useQueryClient();
   return useMutation({
     mutationFn: (payload: Parameters<typeof moveLot>[0]) => moveLot(payload),
+    onSuccess: () => queryClient.invalidateQueries({ queryKey: ['inventory-lots'] }),
+  });
+}
+
+export function useMslBagMutation() {
+  const queryClient = useQueryClient();
+  return useMutation({
+    mutationFn: ({ lotId, action }: { lotId: number; action: 'open-bag' | 'bake' }) =>
+      updateMslBag(lotId, action),
     onSuccess: () => queryClient.invalidateQueries({ queryKey: ['inventory-lots'] }),
   });
 }
