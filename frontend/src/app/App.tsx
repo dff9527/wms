@@ -10,6 +10,8 @@ import {
   KeyRound,
   Eye,
   EyeOff,
+  Building2,
+  Users,
 } from 'lucide-react';
 import {
   Link,
@@ -250,8 +252,8 @@ export default function App() {
       label: '設定',
       items: [
         { path: '/barcode-rules', label: '條碼規則', icon: ScanLine },
-        { path: '/customers', label: '客戶管理', icon: Package },
-        ...(getRole() === 'admin' ? [{ path: '/users', label: '使用者管理', icon: Search }] : []),
+        { path: '/customers', label: '客戶管理', icon: Building2 },
+        ...(getRole() === 'admin' ? [{ path: '/users', label: '使用者管理', icon: Users }] : []),
       ],
     },
   ];
