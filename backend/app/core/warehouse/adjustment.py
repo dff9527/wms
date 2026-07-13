@@ -5,12 +5,31 @@ from fastapi import HTTPException, status
 from sqlalchemy.orm import Session
 
 from app.models.inventory import InventoryLot, InventoryTransaction  # type: ignore
+from app.models.warehouse import LocationStatus
 from app.utils.time import utcnow
 
 
 class AdjustmentService:
     def __init__(self, db: Session):
         self.db = db
+
+    def _ensure_location_not_frozen(self, location_id: Optional[int]) -> None:
+        """盤點凍結(LOCKED)的儲位禁止異動,避免盤點結果一提交就失真。"""
+        if not location_id:
+            return
+        locked = (
+            self.db.query(LocationStatus)
+            .filter(
+                LocationStatus.location_id == location_id,
+                LocationStatus.status == "LOCKED",
+            )
+            .first()
+        )
+        if locked:
+            raise HTTPException(
+                status.HTTP_400_BAD_REQUEST,
+                "Location is frozen for cycle counting; no adjustments allowed",
+            )
 
     def adjust_quantity(
         self,
@@ -33,6 +52,7 @@ class AdjustmentService:
         )
         if not lot:
             raise HTTPException(status.HTTP_404_NOT_FOUND, "Lot not found")
+        self._ensure_location_not_frozen(lot.location_id)
 
         new_qty = lot.quantity_on_hand + quantity_change
 
@@ -95,6 +115,7 @@ class AdjustmentService:
         )
         if not parent_lot:
             raise HTTPException(status.HTTP_404_NOT_FOUND, "Parent Lot not found")
+        self._ensure_location_not_frozen(parent_lot.location_id)
 
         if quantity_to_split <= 0 or quantity_to_split >= parent_lot.quantity_on_hand:
             # Cannot split entire lot (that's just moving/receiving), must be partial

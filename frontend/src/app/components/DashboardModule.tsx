@@ -22,22 +22,22 @@ import {
 } from 'lucide-react';
 import axios from 'axios';
 import { useQuery } from '@tanstack/react-query';
-import { useInventoryLots } from '../api/inventory';
-import { useDailyTrend, useRecentActivities, useTodayReceiving } from '../api/dashboard';
-import type { InventoryLotRow } from '../types/wms-inventory';
+import {
+  useDailyTrend,
+  useInventoryStatusSummary,
+  useRecentActivities,
+  useTodayReceiving,
+} from '../api/dashboard';
 
 export default function DashboardModule() {
   // --- Data Fetching ---
 
-  // 1. Inventory Lots
+  // 1. Inventory status summary (DB-side aggregate; not limited by list pagination)
   const {
-    data: lotsData,
+    data: inventoryStatus,
     isLoading: isLotsLoading,
     isError: isLotsError,
-  } = useInventoryLots({
-    pageSize: 1000,
-  });
-  const lots: InventoryLotRow[] = lotsData?.items ?? [];
+  } = useInventoryStatusSummary();
 
   const {
     data: todayReceiving,
@@ -55,25 +55,14 @@ export default function DashboardModule() {
     isError: isActivitiesError,
   } = useRecentActivities();
 
-  // Compute inventory stats from lots
-  let totalQtyOnHand = 0;
-  // FIX: [fix_1] — Remove unused variables availableCount, qcHoldCount, quarantineCount and their increment logic
-  let availableQty = 0;
+  // Compute inventory stats from the aggregate endpoint
+  const totalQtyOnHand = inventoryStatus?.totalQuantity ?? 0;
   const statusQtys: Record<string, number> = {};
-
-  for (const lot of lots) {
-    const qty = Number(lot?.qtyOnHand ?? 0);
-    totalQtyOnHand += qty;
-
-    const key = String(lot?.status ?? '').toLowerCase();
-    if (!key || key === 'undefined' || key === 'null') continue;
-
-    statusQtys[key] = (statusQtys[key] ?? 0) + qty;
-
-    if (key === 'available') {
-      availableQty += qty;
-    }
+  for (const slice of inventoryStatus?.breakdown ?? []) {
+    statusQtys[slice.status.toLowerCase()] = slice.quantity;
   }
+  const availableQty = statusQtys['available'] ?? 0;
+  const hasInventoryData = (inventoryStatus?.breakdown.length ?? 0) > 0;
 
   // Build pie chart data from real inventory statuses
   const inventoryByStatus = [
@@ -159,12 +148,12 @@ export default function DashboardModule() {
   }> = [
     {
       title: '總庫存量',
-      value: lots.length > 0 ? totalQtyOnHand.toLocaleString() : '—',
+      value: hasInventoryData ? totalQtyOnHand.toLocaleString() : '—',
       unit: 'PCS',
       icon: Package,
       color: 'bg-blue-500',
       change: '', // No historical endpoint
-      isEmpty: lots.length === 0,
+      isEmpty: !hasInventoryData,
     },
     {
       title: '待揀貨',

@@ -8,6 +8,8 @@ from app.api.deps import get_db
 from app.models.inventory import InventoryLot, InventoryTransaction
 from app.schemas.dashboard import (
     DailyTrendPoint,
+    InventoryStatusOut,
+    InventoryStatusSlice,
     RecentActivityOut,
     TodayReceivingOut,
 )
@@ -92,6 +94,28 @@ def daily_trend(db: Session = Depends(get_db)):
         )
         for day in (start_date + timedelta(days=offset) for offset in range(14))
     ]
+
+
+@router.get("/inventory-status", response_model=InventoryStatusOut)
+def inventory_status(db: Session = Depends(get_db)):
+    """庫存狀態彙總(DB 端 GROUP BY,不受清單分頁上限影響)。"""
+    rows = (
+        db.query(
+            InventoryLot.lot_status,
+            func.coalesce(func.sum(InventoryLot.quantity_on_hand), 0),
+        )
+        .filter(InventoryLot.lot_status != "VOID")
+        .group_by(InventoryLot.lot_status)
+        .all()
+    )
+    breakdown = [
+        InventoryStatusSlice(status=lot_status or "UNKNOWN", quantity=int(quantity))
+        for lot_status, quantity in rows
+    ]
+    return InventoryStatusOut(
+        total_quantity=sum(slice_.quantity for slice_ in breakdown),
+        breakdown=breakdown,
+    )
 
 
 @router.get("/recent-activities", response_model=list[RecentActivityOut])

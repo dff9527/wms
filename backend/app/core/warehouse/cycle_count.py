@@ -60,7 +60,8 @@ class CycleCountService:
                 )
             )
         self.db.commit()
-        return self.serialize(self._get(count.cycle_count_id), reveal_expected=True)
+        # 盲盤:建立時也不揭露帳面量,避免建單者自行盤點時失去盲盤意義
+        return self.serialize(self._get(count.cycle_count_id), reveal_expected=False)
 
     def freeze(self, count_id: int) -> dict:
         count = self._get(count_id, lock=True)
@@ -128,7 +129,15 @@ class CycleCountService:
         lots_by_id = {lot.lot_id: lot for lot in lots}
         if approve:
             for line in count.lines:
-                lot = lots_by_id[line.lot_id]
+                lot = lots_by_id.get(line.lot_id)
+                if lot is None:
+                    raise ValueError(
+                        f"Lot {line.lot_id} no longer exists; reject this count and recreate it"
+                    )
+                if lot.lot_status == "VOID":
+                    raise ValueError(
+                        f"Lot {line.lot_id} was voided during the count; reject this count and recreate it"
+                    )
                 before = lot.quantity_on_hand
                 after = line.counted_quantity
                 change = after - before

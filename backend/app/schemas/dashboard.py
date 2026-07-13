@@ -15,6 +15,16 @@ class DailyTrendPoint(BaseModel):
     shipping: int
 
 
+class InventoryStatusSlice(BaseModel):
+    status: str
+    quantity: int
+
+
+class InventoryStatusOut(BaseModel):
+    total_quantity: int
+    breakdown: list[InventoryStatusSlice]
+
+
 class RecentActivityOut(BaseModel):
     id: int
     type: str

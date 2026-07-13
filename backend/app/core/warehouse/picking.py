@@ -1,11 +1,13 @@
 import datetime
 from typing import Dict, List, Optional
 
+from sqlalchemy import or_
 from sqlalchemy.orm import Session
 
 from app.models.order import SalesOrder, SOLine, PickTask
 from app.models.inventory import InventoryLot
 from app.models.transaction import InventoryTransaction
+from app.models.warehouse import LocationStatus
 
 
 class InsufficientInventoryError(Exception):
@@ -173,6 +175,21 @@ class PickingEngine:
         if required_date_code:
             query = query.filter(InventoryLot.vendor_date_code == required_date_code)
 
+        # 排除盤點凍結(LOCKED)儲位的批次,凍結期間不可配出
+        locked_ids = [
+            row.location_id
+            for row in self.db.query(LocationStatus.location_id)
+            .filter(LocationStatus.status == "LOCKED")
+            .all()
+        ]
+        if locked_ids:
+            query = query.filter(
+                or_(
+                    InventoryLot.location_id.is_(None),
+                    InventoryLot.location_id.notin_(locked_ids),
+                )
+            )
+
         # row lock:避免並發配貨對同批次重複保留(SQLite 會忽略,PG 生效)。
         # of=InventoryLot:model 的 location/vendor 是 lazy="joined"(outer join),
         # PG 不允許 FOR UPDATE 鎖 outer join 的 nullable 側,只鎖主表。
@@ -266,6 +283,16 @@ class PickingEngine:
         )
         if not lot:
             raise ValueError(f"Lot for task {task_id} not found")
+
+        if lot.location_id and (
+            self.db.query(LocationStatus)
+            .filter(
+                LocationStatus.location_id == lot.location_id,
+                LocationStatus.status == "LOCKED",
+            )
+            .first()
+        ):
+            raise ValueError("儲位盤點凍結中,無法確認揀貨")
 
         picked = int(picked_qty)
         if picked <= 0:

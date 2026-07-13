@@ -25,6 +25,24 @@ export interface RecentActivity {
   executedAt: string;
 }
 
+export interface InventoryStatusSummary {
+  totalQuantity: number;
+  breakdown: { status: string; quantity: number }[];
+}
+
+export function useInventoryStatusSummary() {
+  return useQuery({
+    queryKey: ['dashboard', 'inventory-status'],
+    queryFn: async (): Promise<InventoryStatusSummary> => {
+      const { data } = await axios.get('/api/v1/dashboard/inventory-status');
+      return {
+        totalQuantity: data.total_quantity,
+        breakdown: Array.isArray(data.breakdown) ? data.breakdown : [],
+      };
+    },
+  });
+}
+
 export function useTodayReceiving() {
   return useQuery({
     queryKey: ['dashboard', 'today-receiving'],
