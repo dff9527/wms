@@ -4,6 +4,7 @@ from sqlalchemy.orm import Session
 from app.api.deps import get_current_user, get_db, require_role
 from app.core.warehouse.returns import ReturnService
 from app.schemas.returns import CustomerReturnCreate, ReturnOut, SupplierReturnCreate
+from app.core.business_logging import log_business_event
 
 router = APIRouter(prefix="/api/v1/returns", tags=["Returns"])
 
@@ -23,7 +24,7 @@ def customer_return(
     db: Session = Depends(get_db),
     user: dict = Depends(get_current_user),
 ):
-    return execute(
+    result = execute(
         lambda: ReturnService(db).customer_return(
             request.lotId,
             request.quantity,
@@ -32,6 +33,8 @@ def customer_return(
             user["username"],
         )
     )
+    log_business_event(user["username"], "customer_return", request.lotId)
+    return result
 
 
 @router.post("/supplier", response_model=ReturnOut)
@@ -40,7 +43,7 @@ def supplier_return(
     db: Session = Depends(get_db),
     user: dict = Depends(require_role("admin", "supervisor")),
 ):
-    return execute(
+    result = execute(
         lambda: ReturnService(db).supplier_return(
             request.lotId,
             request.quantity,
@@ -49,3 +52,5 @@ def supplier_return(
             user["username"],
         )
     )
+    log_business_event(user["username"], "supplier_return", request.lotId)
+    return result

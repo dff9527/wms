@@ -19,6 +19,7 @@ from app.schemas.receiving import (
 from app.api.deps import get_db, get_current_user, require_role
 from app.config import settings
 from app.core.printing.label_printer import LabelPrinter
+from app.core.business_logging import log_business_event
 
 router = APIRouter(tags=["receiving"])
 
@@ -148,13 +149,15 @@ def receive_item(
         # process_receipt already returns a ReceiveResponse (success/lotId/
         # internalLotNumber/internalBarcode/labelUrl) and raises HTTPException 400
         # on validation failure.
-        return service.process_receipt(
+        result = service.process_receipt(
             po_number=request.poNumber,
             scanned_barcode=request.scannedBarcode or "",
             vendor_id=request.vendorId,
             quantity=request.quantity,
             executed_by=current_user["username"],  # 以登入者為準,不信任 body
         )
+        log_business_event(current_user["username"], "receiving", result.lotId)
+        return result
     except ValueError as e:
         raise HTTPException(status_code=400, detail=str(e))
 
@@ -175,12 +178,14 @@ def complete_iqc(
     try:
         # complete_iqc returns {success, status, suggestedLocation} and updates the
         # lot (status + iqc fields), suggesting a putaway location when result==PASS.
-        return service.complete_iqc(
+        response = service.complete_iqc(
             lot_id=request.lotId,
             result=request.result,
             inspector=current_user["username"],  # 以登入者為準,不信任 body
             notes=request.notes,
         )
+        log_business_event(current_user["username"], "iqc", request.lotId)
+        return response
     except ValueError as e:
         raise HTTPException(status_code=400, detail=str(e))
 

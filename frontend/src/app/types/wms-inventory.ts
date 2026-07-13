@@ -50,6 +50,7 @@ export interface InventoryLotRow extends WmsLotIdentifiers {
   expiryDate: string | null;
   bagOpenedAt: string | null;
   mslLevel: number;
+  qualityNotes: string | null;
   status: InventoryLotRowStatus;
 }
 

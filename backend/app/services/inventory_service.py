@@ -14,7 +14,7 @@ from app.models.warehouse import LocationStatus
 from app.core.warehouse.putaway import PutAwayEngine
 from app.utils.time import utcnow
 
-MSL_FLOOR_LIFE_HOURS = {2: 8760, 3: 168, 4: 72, 5: 48, 6: 24}
+MSL_FLOOR_LIFE_HOURS = {2: 8760, 3: 168, 4: 72, 5: 48}
 
 
 class InventoryService:
@@ -301,13 +301,16 @@ class InventoryService:
             lot.expiry_date = (now + timedelta(hours=hours)).date()
         lot.updated_at = now
         self.db.commit()
-        return {
+        response = {
             "success": True,
             "lotId": lot.lot_id,
             "mslLevel": level,
             "bagOpenedAt": lot.bag_opened_at,
             "expiryDate": lot.expiry_date,
         }
+        if level == 6:
+            response["note"] = "MSL6 請依品保指示處理"
+        return response
 
     def bake_msl_lot(self, lot_id: int) -> dict:
         lot = (

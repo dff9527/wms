@@ -35,9 +35,10 @@ services:
       DATABASE_URL: postgresql://wms_user:wms_password@db:5432/wms_semiconductor
       REDIS_URL: redis://redis:6379/0
       # .env 被 .dockerignore 排除不會進映像;SECRET_KEY 必須在這裡給,
-      # 否則 app/core/config.py 的啟動驗證(≥32 字元)會讓容器直接 crash。
-      # 正式環境請用 WMS_SECRET_KEY 環境變數覆蓋,不要用預設值。
-      SECRET_KEY: ${WMS_SECRET_KEY:-docker-dev-secret-key-change-me-0123456789abcdef}
+      # 正式環境(DEBUG=false)必須用 WMS_SECRET_KEY 覆蓋預設值,否則啟動即失敗。
+      SECRET_KEY: ${WMS_SECRET_KEY:-dev-secret-change-me}
+      DEBUG: ${WMS_DEBUG:-true}
+      CORS_ORIGINS: ${CORS_ORIGINS:-http://localhost:3000,http://localhost:5173}
       CLAUDE_API_KEY: ${CLAUDE_API_KEY:-}
     command:
       - /bin/sh

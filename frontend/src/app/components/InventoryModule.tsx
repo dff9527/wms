@@ -22,6 +22,7 @@ import {
   useInventoryLots,
   useMoveLotMutation,
   useMslBagMutation,
+  useQualityNotesMutation,
   useSplitLotMutation,
   useUpdateLotMutation,
   useVoidLotMutation,
@@ -81,6 +82,7 @@ export default function InventoryModule() {
   const isAdmin = role === 'admin';
   const canOperateLots = ['admin', 'supervisor'].includes(role);
   const canSupplierReturn = ['admin', 'supervisor'].includes(role);
+  const canEditQualityNotes = ['admin', 'supervisor', 'qc'].includes(role);
 
   const [searchTerm, setSearchTerm] = useState('');
   const [debouncedSearch, setDebouncedSearch] = useState('');
@@ -105,12 +107,14 @@ export default function InventoryModule() {
   const [editLocationCode, setEditLocationCode] = useState('');
   const [editQualityNotes, setEditQualityNotes] = useState('');
   const [voidLotTarget, setVoidLotTarget] = useState<InventoryLotRow | null>(null);
+  const [qualityNotes, setQualityNotes] = useState('');
 
   const adjustMutation = useAdjustLotMutation();
   const splitMutation = useSplitLotMutation();
   const moveMutation = useMoveLotMutation();
   const mslMutation = useMslBagMutation();
   const updateLotMutation = useUpdateLotMutation();
+  const qualityNotesMutation = useQualityNotesMutation();
   const voidLotMutation = useVoidLotMutation();
   const customerReturnMutation = useCustomerReturnMutation();
   const supplierReturnMutation = useSupplierReturnMutation();
@@ -195,6 +199,27 @@ export default function InventoryModule() {
     setReturnReason('');
     setReturnReference('');
     setActionError(null);
+    setQualityNotes('');
+  };
+
+  const openDetailDialog = (lot: InventoryLotRow) => {
+    setSelectedLot(lot);
+    setQualityNotes(lot.qualityNotes ?? '');
+  };
+
+  const handleQualityNotesSave = async () => {
+    if (!selectedLot) return;
+    try {
+      const updated = await qualityNotesMutation.mutateAsync({
+        lotId: selectedLot.id,
+        qualityNotes: qualityNotes.trim() || null,
+      });
+      setSelectedLot(updated);
+      setQualityNotes(updated.qualityNotes ?? '');
+      toast.success('品保備注已儲存');
+    } catch (err) {
+      toast.error(errDetail(err));
+    }
   };
 
   const errDetail = (err: unknown): string => {
@@ -533,7 +558,7 @@ export default function InventoryModule() {
                   <tr
                     key={lot.id}
                     className="cursor-pointer border-b border-slate-100 hover:bg-slate-50"
-                    onClick={() => setSelectedLot(lot)}
+                    onClick={() => openDetailDialog(lot)}
                   >
                     <td className="px-3 py-3">
                       <div className="text-sm font-mono font-medium text-slate-900">
@@ -741,6 +766,37 @@ export default function InventoryModule() {
               <div className="border-t border-slate-200 pt-4">
                 <label className="mb-2 block text-sm text-slate-600">狀態</label>
                 {getStatusBadge(selectedLot.status)}
+              </div>
+
+              <div className="border-t border-slate-200 pt-4">
+                <label htmlFor="quality-notes" className="mb-2 block text-sm text-slate-600">
+                  品保備注
+                </label>
+                {canEditQualityNotes ? (
+                  <div className="space-y-2">
+                    <textarea
+                      id="quality-notes"
+                      value={qualityNotes}
+                      onChange={(event) => setQualityNotes(event.target.value)}
+                      rows={3}
+                      maxLength={5000}
+                      className="w-full rounded-md border border-slate-300 px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-blue-500"
+                      placeholder="輸入特殊處理或品保指示"
+                    />
+                    <Button
+                      type="button"
+                      size="sm"
+                      onClick={handleQualityNotesSave}
+                      disabled={qualityNotesMutation.isPending}
+                    >
+                      {qualityNotesMutation.isPending ? '儲存中…' : '儲存備注'}
+                    </Button>
+                  </div>
+                ) : (
+                  <p className="whitespace-pre-wrap text-sm text-slate-800">
+                    {selectedLot.qualityNotes || '—'}
+                  </p>
+                )}
               </div>
 
               {selectedLot.mslLevel > 1 && ['admin', 'supervisor', 'qc'].includes(role) && (

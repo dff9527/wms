@@ -315,12 +315,16 @@ def list_tasks(
     if not include_cancelled:
         q = q.filter(PickTask.status != "CANCELLED")
     tasks = q.all()
+    tasks.sort(key=PickingEngine._natural_location_key)
     return [
         {
             "task_id": t.task_id,
             "so_line_id": t.so_line_id,
             "lot_id": t.lot_id,
             "from_location_id": t.from_location_id,
+            "location_code": (
+                t.from_location.location_code if t.from_location is not None else None
+            ),
             "pick_qty": t.pick_qty,
             "status": t.status,
         }

@@ -37,11 +37,13 @@ interface PickWaveSectionProps {
 
 function PickingTaskRow({
   task,
+  totalTasks,
   onPickedQtyChange,
   onConfirmTask,
   onCancelError,
 }: {
   task: PickWaveTaskWithPicking;
+  totalTasks: number;
   onPickedQtyChange: (taskId: number, value: string) => void;
   onConfirmTask: (task: PickWaveTaskWithPicking) => void;
   onCancelError: (taskId: number) => void;
@@ -53,9 +55,9 @@ function PickingTaskRow({
     >
       <td className="py-3 px-3">
         <span
-          className={`inline-flex items-center justify-center size-7 rounded-full font-bold text-sm ${task.isConfirmed ? 'bg-green-100 text-green-700' : 'bg-blue-100 text-blue-700'}`}
+          className={`inline-flex items-center justify-center whitespace-nowrap rounded-full px-2 py-1 font-bold text-xs ${task.isConfirmed ? 'bg-green-100 text-green-700' : 'bg-blue-100 text-blue-700'}`}
         >
-          {task.sequence}
+          第 {task.sequence} 站 / 共 {totalTasks} 站
         </span>
       </td>
       <td className="py-3 px-3">
@@ -141,18 +143,20 @@ function PickingTaskRow({
 
 function ReadOnlyTaskRow({
   task,
+  totalTasks,
   isAdmin,
   onCancelTask,
 }: {
   task: PickWaveTask;
+  totalTasks: number;
   isAdmin: boolean;
   onCancelTask: (task: PickWaveTask) => void;
 }) {
   return (
     <tr key={task.sequence} className="border-b border-slate-100 hover:bg-slate-50">
       <td className="py-3 px-3">
-        <span className="inline-flex items-center justify-center size-7 bg-blue-100 text-blue-700 rounded-full font-bold text-sm">
-          {task.sequence}
+        <span className="inline-flex items-center justify-center whitespace-nowrap rounded-full bg-blue-100 px-2 py-1 text-xs font-bold text-blue-700">
+          第 {task.sequence} 站 / 共 {totalTasks} 站
         </span>
       </td>
       <td className="py-3 px-3">
@@ -372,6 +376,7 @@ export default function PickWaveSection({
                     <PickingTaskRow
                       key={task.taskId}
                       task={task}
+                      totalTasks={pickWaveWithPicking.length}
                       onPickedQtyChange={onPickedQtyChange}
                       onConfirmTask={onConfirmTask}
                       onCancelError={onCancelError}
@@ -380,6 +385,7 @@ export default function PickWaveSection({
                     <ReadOnlyTaskRow
                       key={task.taskId}
                       task={task}
+                      totalTasks={pickWaveWithPicking.length}
                       isAdmin={isAdmin}
                       onCancelTask={onCancelTask}
                     />

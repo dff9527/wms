@@ -94,6 +94,13 @@ class LotUpdateRequest(BaseModel):
         populate_by_name = True
 
 
+class QualityNotesUpdateRequest(BaseModel):
+    qualityNotes: Optional[str] = Field(None, alias="quality_notes", max_length=5000)
+
+    class Config:
+        populate_by_name = True
+
+
 class MoveRequest(BaseModel):
     targetLocationCode: str = Field(min_length=1, max_length=20)
     reason: Optional[str] = Field(default=None, max_length=500)

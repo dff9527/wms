@@ -11,8 +11,10 @@ from app.schemas.inventory import (
     AdjustRequest,
     SplitRequest,
     LotUpdateRequest,
+    QualityNotesUpdateRequest,
     MoveRequest,
 )
+from app.core.business_logging import log_business_event
 
 # main.py mounts this under prefix="/api/v1/inventory"; do not add a second prefix here
 router = APIRouter(tags=["Inventory"])
@@ -133,6 +135,27 @@ def update_lot(
     return lot
 
 
+@router.patch("/lots/{lot_id}/quality-notes", response_model=LotOut)
+def update_quality_notes(
+    lot_id: int,
+    request: QualityNotesUpdateRequest,
+    db: Session = Depends(get_db),
+    current_user: dict = Depends(require_role("admin", "supervisor", "qc")),
+):
+    """Update only the lot's quality notes."""
+    try:
+        lot = InventoryService(db).update_lot(
+            lot_id,
+            quality_notes=request.qualityNotes,
+            fields_set={"qualityNotes": request.qualityNotes},
+        )
+    except ValueError as exc:
+        status = 404 if "not found" in str(exc).lower() else 400
+        raise HTTPException(status_code=status, detail=str(exc)) from exc
+    log_business_event(current_user["username"], "quality_notes_update", lot_id)
+    return lot
+
+
 @router.post("/lots/{lot_id}/void")
 def void_lot(
     lot_id: int,
@@ -166,6 +189,7 @@ def adjust_inventory(
     # dump by FIELD name (lotId/quantityChange/...) to match what the service reads
     req_dict = request.model_dump()
     result = service.adjust_quantity(req_dict, executed_by=current_user["username"])
+    log_business_event(current_user["username"], "inventory_adjust", request.lotId)
     return result
 
 

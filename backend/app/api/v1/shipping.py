@@ -10,8 +10,10 @@ from app.schemas.shipping import (
     PendingShipment,
 )
 from app.models.customer import Customer
+from app.models.order import PickTask, SalesOrder, SOLine
 
 from app.api.deps import get_db, get_current_user
+from app.core.business_logging import log_business_event
 
 router = APIRouter(prefix="/api/v1/shipping", tags=["shipping"])
 
@@ -29,6 +31,19 @@ def confirm_shipment(
             request.so_number, current_user["username"], request.shipping_notes
         )
         db.commit()
+        lot_ids = [
+            row[0]
+            for row in (
+                db.query(PickTask.lot_id)
+                .join(SOLine, PickTask.so_line_id == SOLine.so_line_id)
+                .join(SalesOrder, SOLine.so_id == SalesOrder.so_id)
+                .filter(SalesOrder.so_number == request.so_number)
+                .distinct()
+                .all()
+            )
+        ]
+        for lot_id in lot_ids:
+            log_business_event(current_user["username"], "shipping", lot_id)
         return result
     except ValueError as e:
         raise HTTPException(status_code=400, detail=str(e))

@@ -5,6 +5,7 @@ from app.api.deps import get_db, get_current_user, require_role
 from app.core.warehouse.cycle_count import CycleCountService
 from app.schemas.cycle_count import CycleCountCreate, CycleCountEntries, CycleCountOut
 from app.models.warehouse import StorageLocation
+from app.core.business_logging import log_business_event
 
 router = APIRouter(prefix="/api/v1/cycle-counts", tags=["Cycle Counts"])
 
@@ -68,7 +69,9 @@ def approve_count(
     db: Session = Depends(get_db),
     user: dict = Depends(require_role("admin", "supervisor")),
 ):
-    return run(lambda: CycleCountService(db).review(count_id, True, user["username"]))
+    result = run(lambda: CycleCountService(db).review(count_id, True, user["username"]))
+    log_business_event(user["username"], "cycle_count_approve")
+    return result
 
 
 @router.post("/{count_id}/reject", response_model=CycleCountOut)

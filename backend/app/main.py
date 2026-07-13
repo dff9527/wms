@@ -1,6 +1,10 @@
 from fastapi import Depends, FastAPI
 from fastapi.middleware.cors import CORSMiddleware
 
+from app.config import settings
+
+settings.validate_secret_key()
+
 import app.models  # noqa: F401  確保所有 ORM model 載入、Base.metadata 完整
 from app.api.v1 import receiving as receiving_v1
 from app.api.v1 import inventory as inventory_v1
@@ -56,7 +60,7 @@ app.include_router(
 
 app.add_middleware(
     CORSMiddleware,
-    allow_origins=["http://localhost:3000", "http://localhost:5173"],
+    allow_origins=settings.cors_origins,
     allow_credentials=True,
     allow_methods=["*"],
     allow_headers=["*"],

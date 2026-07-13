@@ -26,6 +26,7 @@ function mapToInventoryLotRow(data: any): InventoryLotRow {
     description: data.description ?? '',
     receiveDate: data.receive_date ?? '',
     mslLevel: data.msl_level ?? 0,
+    qualityNotes: data.quality_notes ?? null,
   };
 }
 
@@ -124,11 +125,19 @@ export async function updateLot(payload: {
   locationCode?: string;
   qualityNotes?: string;
 }) {
-  const response = await axios.patch(`${API_BASE_URL}/lots/${payload.lotId}`, {
+  const response = await axios.patch(`${API_BASE_URL}/inventory/lots/${payload.lotId}`, {
     locationCode: payload.locationCode,
     qualityNotes: payload.qualityNotes,
   });
   return response.data;
+}
+
+export async function updateQualityNotes(payload: { lotId: number; qualityNotes: string | null }) {
+  const response = await axios.patch(
+    `${API_BASE_URL}/inventory/lots/${payload.lotId}/quality-notes`,
+    { qualityNotes: payload.qualityNotes }
+  );
+  return mapToInventoryLotRow(response.data);
 }
 
 export async function voidLot(lotId: number) {
@@ -193,6 +202,15 @@ export function useUpdateLotMutation() {
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: ['inventory-lots'] });
     },
+  });
+}
+
+export function useQualityNotesMutation() {
+  const queryClient = useQueryClient();
+  return useMutation({
+    mutationFn: (payload: Parameters<typeof updateQualityNotes>[0]) =>
+      updateQualityNotes(payload),
+    onSuccess: () => queryClient.invalidateQueries({ queryKey: ['inventory-lots'] }),
   });
 }
 

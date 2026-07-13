@@ -1,4 +1,5 @@
 import datetime
+import re
 from typing import Dict, List, Optional
 
 from sqlalchemy import or_
@@ -17,6 +18,15 @@ class InsufficientInventoryError(Exception):
 class PickingEngine:
     def __init__(self, db: Session):
         self.db = db
+
+    @staticmethod
+    def _natural_location_key(task: PickTask) -> list[tuple[int, object]]:
+        code = task.from_location.location_code if task.from_location else ""
+        return [
+            (0, int(part)) if part.isdigit() else (1, part.casefold())
+            for part in re.split(r"(\d+)", code)
+            if part
+        ]
 
     @staticmethod
     def _get_so(db: Session, so_number: str) -> Optional[SalesOrder]:
@@ -226,9 +236,9 @@ class PickingEngine:
         tasks = (
             self.db.query(PickTask)
             .filter(PickTask.status.in_(["PENDING", "PICKED"]))
-            .order_by(PickTask.from_location_id)
             .all()
         )
+        tasks.sort(key=self._natural_location_key)
 
         wave = []
         for i, task in enumerate(tasks, 1):
@@ -240,8 +250,8 @@ class PickingEngine:
                     "sequence": i,
                     "task_id": task.task_id,
                     "location": (
-                        str(task.from_location_id)
-                        if task.from_location_id is not None
+                        task.from_location.location_code
+                        if task.from_location is not None
                         else None
                     ),
                     "internalSku": lot.internal_sku if lot else "",
