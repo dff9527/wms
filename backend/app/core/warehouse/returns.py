@@ -4,12 +4,29 @@ from sqlalchemy.orm import Session
 
 from app.models.inventory import InventoryLot, InventoryTransaction
 from app.models.returns import ReturnOrder
-from app.models.warehouse import StorageLocation
+from app.models.warehouse import LocationStatus, StorageLocation
 
 
 class ReturnService:
     def __init__(self, db: Session):
         self.db = db
+
+    def _ensure_location_not_frozen(self, location_id: int | None) -> None:
+        """盤點凍結(LOCKED)的儲位禁止異動,與 adjust/split/pick 的防線一致。"""
+        if not location_id:
+            return
+        locked = (
+            self.db.query(LocationStatus)
+            .filter(
+                LocationStatus.location_id == location_id,
+                LocationStatus.status == "LOCKED",
+            )
+            .first()
+        )
+        if locked:
+            raise ValueError(
+                "Location is frozen for cycle counting; no return movements allowed"
+            )
 
     def customer_return(
         self,
@@ -20,6 +37,11 @@ class ReturnService:
         username: str,
     ):
         lot = self._locked_lot(lot_id)
+        # 客退只允許已出貨(SHIPPED)的批次;在庫批次走這裡會把好庫存整批拖進隔離區
+        if lot.lot_status != "SHIPPED":
+            raise ValueError(
+                f"Customer return requires a SHIPPED lot; lot {lot_id} is {lot.lot_status}"
+            )
         quarantine = (
             self.db.query(StorageLocation)
             .filter(StorageLocation.is_quarantine.is_(True))
@@ -28,6 +50,7 @@ class ReturnService:
         )
         if not quarantine:
             raise ValueError("No quarantine location is configured")
+        self._ensure_location_not_frozen(quarantine.location_id)
         before = lot.quantity_on_hand
         lot.quantity_on_hand += quantity
         lot.quantity_reserved = min(lot.quantity_reserved, lot.quantity_on_hand)
@@ -57,6 +80,7 @@ class ReturnService:
         username: str,
     ):
         lot = self._locked_lot(lot_id)
+        self._ensure_location_not_frozen(lot.location_id)
         if quantity > lot.quantity_available:
             raise ValueError("Return quantity exceeds available inventory")
         before = lot.quantity_on_hand

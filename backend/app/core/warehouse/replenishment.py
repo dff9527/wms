@@ -6,7 +6,7 @@ from sqlalchemy.orm import Session
 from app.core.warehouse.putaway import PutAwayEngine
 from app.models.inventory import InventoryLot, InventoryTransaction
 from app.models.replenishment import ReplenishmentTask
-from app.models.warehouse import StorageLocation
+from app.models.warehouse import LocationStatus, StorageLocation
 
 
 class ReplenishmentService:
@@ -117,6 +117,19 @@ class ReplenishmentService:
             or lot.quantity_on_hand != task.quantity
         ):
             raise ValueError("Replenishment inventory changed; regenerate the task")
+        # 盤點凍結(LOCKED)的來源/目的儲位禁止搬移,與 move/adjust 的防線一致
+        frozen = (
+            self.db.query(LocationStatus)
+            .filter(
+                LocationStatus.location_id.in_(
+                    [task.from_location_id, task.to_location_id]
+                ),
+                LocationStatus.status == "LOCKED",
+            )
+            .first()
+        )
+        if frozen:
+            raise ValueError("Source or target location is frozen for cycle counting")
         PutAwayEngine(self.db).validate_location(lot, destination)
         previous = lot.location_id
         lot.location_id = destination.location_id
