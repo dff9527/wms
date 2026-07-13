@@ -17,6 +17,7 @@ from app.api.v1.users import router as users_router
 from app.api.v1.cycle_counts import router as cycle_counts_router
 from app.api.v1.returns import router as returns_router
 from app.api.v1.replenishment import router as replenishment_router
+from app.api.v1.alerts import router as alerts_router
 from app.api.deps import get_current_user
 
 app = FastAPI(title="WMS Semiconductor API", version="0.1.0")
@@ -46,6 +47,7 @@ app.include_router(users_router)
 app.include_router(cycle_counts_router, dependencies=[Depends(get_current_user)])
 app.include_router(returns_router, dependencies=[Depends(get_current_user)])
 app.include_router(replenishment_router, dependencies=[Depends(get_current_user)])
+app.include_router(alerts_router, dependencies=[Depends(get_current_user)])
 app.include_router(
     dashboard_v1.router,
     prefix="/api/v1/dashboard",
