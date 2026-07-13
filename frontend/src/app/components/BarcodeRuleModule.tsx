@@ -16,7 +16,6 @@ import {
   updatePattern,
   deletePattern,
   parseBarcode,
-  learnPattern,
   Vendor,
   BarcodePattern,
   ParseResult,
@@ -68,12 +67,6 @@ export default function BarcodeRuleModule() {
   const [newPriority, setNewPriority] = useState<number>(10);
   const [createError, setCreateError] = useState<string | null>(null);
   const [isCreating, setIsCreating] = useState(false);
-
-  // AI Learn States
-  const [aiSamples, setAiSamples] = useState('');
-  const [aiResult, setAiResult] = useState<{ regex?: string; message?: string } | null>(null);
-  const [isLearning, setIsLearning] = useState(false);
-  const [learnError, setLearnError] = useState<string | null>(null);
 
   // Parse Test States
   const [testBarcode, setTestBarcode] = useState('');
@@ -238,37 +231,6 @@ export default function BarcodeRuleModule() {
       }
     } finally {
       setIsCreating(false);
-    }
-  };
-
-  const handleLearnPattern = async () => {
-    setIsLearning(true);
-    setAiResult(null);
-    setLearnError(null);
-
-    const samples = aiSamples
-      .split('\n')
-      .map((s) => s.trim())
-      .filter(Boolean);
-
-    if (samples.length === 0) {
-      setLearnError('請至少輸入一筆樣本條碼');
-      setIsLearning(false);
-      return;
-    }
-
-    try {
-      const result = await learnPattern(selectedVendorId || null, samples, true);
-      setAiResult({ regex: (result as any).inferred_regex || '', message: 'Success' });
-    } catch (err: unknown) {
-      const errObj = err as Error & { status?: number };
-      if (errObj.status === 503) {
-        setLearnError('AI 服務未設定（缺 CLAUDE_API_KEY）');
-      } else {
-        setLearnError(errObj.message || 'Failed to learn pattern');
-      }
-    } finally {
-      setIsLearning(false);
     }
   };
 
@@ -623,12 +585,6 @@ export default function BarcodeRuleModule() {
         createError={createError}
         isCreating={isCreating}
         onCreatePattern={handleCreatePattern}
-        aiSamples={aiSamples}
-        setAiSamples={setAiSamples}
-        aiResult={aiResult}
-        isLearning={isLearning}
-        learnError={learnError}
-        onLearnPattern={handleLearnPattern}
       />
 
       {/* Edit Pattern Dialog */}

@@ -150,24 +150,3 @@ export async function parseBarcode(barcode: string, vendorId: string | null): Pr
   }
 }
 
-export interface LearnPatternResponse {
-  inferred_regex?: string;
-  [key: string]: unknown;
-}
-
-export async function learnPattern(
-  vendorId: string | null,
-  samples: string[],
-  savePattern: boolean
-): Promise<LearnPatternResponse> {
-  try {
-    const res = await axios.post(`${API_BASE_URL}/api/v1/barcodes/learn`, {
-      vendor_id: vendorId,
-      samples,
-      save_pattern: savePattern,
-    });
-    return res.data;
-  } catch (err) {
-    return handleAxiosError(err);
-  }
-}

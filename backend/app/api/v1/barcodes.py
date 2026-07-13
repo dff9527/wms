@@ -3,7 +3,6 @@ from sqlalchemy.orm import Session
 from app.api.deps import get_db, get_current_user, require_role
 from app.services.barcode_service import (
     parse_barcode,
-    learn_pattern,
     list_patterns,
     create_pattern,
     update_pattern,
@@ -12,8 +11,6 @@ from app.services.barcode_service import (
 from app.schemas.barcode import (
     ScanRequest,
     ParseResult,
-    LearnRequest,
-    LearnResult,
     CreatePatternRequest,
     PatternOut,
     UpdatePatternRequest,
@@ -41,24 +38,6 @@ def scan_parse(
         )
 
     return result
-
-
-@router.post("/learn", response_model=LearnResult)
-def learn_new_pattern(
-    req: LearnRequest,
-    db: Session = Depends(get_db),
-    _current_user: dict = Depends(get_current_user),
-):
-    """
-    Infer a new barcode pattern from samples using AI.
-    Optionally save to database if save_pattern=True.
-    """
-    try:
-        return learn_pattern(db, req, save=req.save_pattern)
-    except ValueError as e:
-        raise HTTPException(status_code=503, detail=str(e))
-    except RuntimeError as e:
-        raise HTTPException(status_code=500, detail=str(e))
 
 
 @router.get("/patterns")
