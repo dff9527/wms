@@ -15,6 +15,7 @@ import {
   ClipboardCheck,
   FileText,
   PackagePlus,
+  MapPin,
 } from 'lucide-react';
 import {
   Link,
@@ -36,6 +37,7 @@ import UserAdminModule from './components/UserAdminModule';
 import CustomerModule from './components/CustomerModule';
 import CycleCountModule from './components/CycleCountModule';
 import ReportsModule from './components/ReportsModule';
+import LocationModule from './components/LocationModule';
 import ReplenishmentModule from './components/ReplenishmentModule';
 import {
   Sidebar,
@@ -263,6 +265,7 @@ export default function App() {
       label: '設定',
       items: [
         { path: '/barcode-rules', label: '條碼規則', icon: ScanLine },
+        { path: '/locations', label: '儲位管理', icon: MapPin },
         { path: '/customers', label: '客戶管理', icon: Building2 },
         ...(getRole() === 'admin' ? [{ path: '/users', label: '使用者管理', icon: Users }] : []),
       ],
@@ -347,6 +350,7 @@ export default function App() {
               <Route path="/trace" element={<TraceRoute />} />
               <Route path="/reports" element={<ReportsModule />} />
               <Route path="/barcode-rules" element={<BarcodeRuleModule />} />
+              <Route path="/locations" element={<LocationModule />} />
               <Route path="/customers" element={<CustomerModule />} />
               <Route
                 path="/users"

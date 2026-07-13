@@ -42,3 +42,5 @@ export const submitCycleCount = (id: number) =>
   axios.post<CycleCount>(`${base}/${id}/submit`).then((r) => r.data);
 export const reviewCycleCount = (id: number, approve: boolean) =>
   axios.post<CycleCount>(`${base}/${id}/${approve ? 'approve' : 'reject'}`).then((r) => r.data);
+export const cancelCycleCount = (id: number) =>
+  axios.delete<CycleCount>(`${base}/${id}`).then((r) => r.data);

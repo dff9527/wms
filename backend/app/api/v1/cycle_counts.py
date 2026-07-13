@@ -28,8 +28,18 @@ def list_locations(db: Session = Depends(get_db)):
 
 
 @router.get("", response_model=list[CycleCountOut])
-def list_counts(db: Session = Depends(get_db)):
-    return CycleCountService(db).list_counts()
+def list_counts(include_cancelled: bool = False, db: Session = Depends(get_db)):
+    return CycleCountService(db).list_counts(include_cancelled)
+
+
+@router.delete("/{count_id}", response_model=CycleCountOut)
+def cancel_count(
+    count_id: int,
+    db: Session = Depends(get_db),
+    user: dict = Depends(require_role("admin")),
+):
+    """作廢盤點單(軟刪除,不真刪資料);凍結中的儲位會一併解鎖。"""
+    return run(lambda: CycleCountService(db).cancel(count_id, user["username"]))
 
 
 @router.post("", response_model=CycleCountOut)

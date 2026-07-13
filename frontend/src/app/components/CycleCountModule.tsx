@@ -1,8 +1,9 @@
 import { useEffect, useState } from 'react';
-import { ClipboardCheck, Loader2 } from 'lucide-react';
+import { ClipboardCheck, Loader2, Trash2 } from 'lucide-react';
 import { toast } from 'sonner';
 import { getRole } from '../api/auth';
 import {
+  cancelCycleCount,
   createCycleCount,
   freezeCycleCount,
   listCountLocations,
@@ -25,7 +26,24 @@ export default function CycleCountModule() {
   const [active, setActive] = useState<CycleCount | null>(null);
   const [entries, setEntries] = useState<Record<number, string>>({});
   const [busy, setBusy] = useState(false);
+  const [confirmCancelId, setConfirmCancelId] = useState<number | null>(null);
   const canReview = ['admin', 'supervisor'].includes(getRole());
+  const isAdmin = getRole() === 'admin';
+
+  const handleCancel = async (id: number) => {
+    setBusy(true);
+    try {
+      await cancelCycleCount(id);
+      if (active?.cycleCountId === id) setActive(null);
+      setConfirmCancelId(null);
+      await reload();
+      toast.success('盤點單已作廢');
+    } catch (error: any) {
+      toast.error(error?.response?.data?.detail ?? '作廢失敗');
+    } finally {
+      setBusy(false);
+    }
+  };
 
   const reload = async () => {
     const [nextCounts, nextLocations] = await Promise.all([
@@ -124,15 +142,42 @@ export default function CycleCountModule() {
       <div className="grid gap-4 lg:grid-cols-[280px_1fr]">
         <section className="rounded-lg border bg-white p-3">
           <h2 className="mb-2 font-semibold">盤點單</h2>
+          {counts.length === 0 && <p className="text-sm text-slate-400">尚無盤點單</p>}
           {counts.map((count) => (
-            <button
-              key={count.cycleCountId}
-              className="mb-2 w-full rounded border p-3 text-left hover:bg-slate-50"
-              onClick={() => setActive(count)}
-            >
-              <div className="font-medium">{count.countNumber}</div>
-              <div className="text-xs text-slate-500">{count.status} · {count.lines.length} 列</div>
-            </button>
+            <div key={count.cycleCountId} className="mb-2 flex items-stretch gap-1">
+              <button
+                className="min-w-0 flex-1 rounded border p-3 text-left hover:bg-slate-50"
+                onClick={() => setActive(count)}
+              >
+                <div className="truncate font-medium">{count.countNumber}</div>
+                <div className="text-xs text-slate-500">{count.status} · {count.lines.length} 列</div>
+              </button>
+              {isAdmin && count.status !== 'APPROVED' && (
+                confirmCancelId === count.cycleCountId ? (
+                  <div className="flex flex-col justify-center gap-1">
+                    <Button
+                      variant="destructive"
+                      size="sm"
+                      disabled={busy}
+                      onClick={() => handleCancel(count.cycleCountId)}
+                    >
+                      確認
+                    </Button>
+                    <Button variant="outline" size="sm" onClick={() => setConfirmCancelId(null)}>
+                      取消
+                    </Button>
+                  </div>
+                ) : (
+                  <button
+                    title="作廢盤點單"
+                    className="flex items-center rounded border border-transparent px-2 text-slate-400 hover:border-red-200 hover:bg-red-50 hover:text-red-600"
+                    onClick={() => setConfirmCancelId(count.cycleCountId)}
+                  >
+                    <Trash2 className="size-4" />
+                  </button>
+                )
+              )}
+            </div>
           ))}
         </section>
 

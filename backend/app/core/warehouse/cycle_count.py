@@ -21,8 +21,11 @@ class CycleCountService:
             raise ValueError("Cycle count not found")
         return count
 
-    def list_counts(self) -> list[dict]:
-        counts = self.db.query(CycleCount).order_by(CycleCount.created_at.desc()).all()
+    def list_counts(self, include_cancelled: bool = False) -> list[dict]:
+        query = self.db.query(CycleCount)
+        if not include_cancelled:
+            query = query.filter(CycleCount.status != "CANCELLED")
+        counts = query.order_by(CycleCount.created_at.desc()).all()
         return [self.serialize(count, reveal_expected=False) for count in counts]
 
     def create(
@@ -114,6 +117,32 @@ class CycleCountService:
         count.submitted_at = utcnow()
         self.db.commit()
         return self.serialize(count, reveal_expected=True)
+
+    def cancel(self, count_id: int, username: str) -> dict:
+        """作廢盤點單(軟刪除)。已核准過帳的不可作廢;凍結中的要解鎖儲位。"""
+        count = self._get(count_id, lock=True)
+        if count.status == "APPROVED":
+            raise ValueError("已核准過帳的盤點單不可作廢")
+        if count.status == "CANCELLED":
+            raise ValueError("盤點單已是作廢狀態")
+        location_ids = sorted({line.location_id for line in count.lines})
+        if count.status in {"FROZEN", "COUNTING", "REVIEW"} and location_ids:
+            for status in (
+                self.db.query(LocationStatus)
+                .filter(
+                    LocationStatus.location_id.in_(location_ids),
+                    LocationStatus.status == "LOCKED",
+                )
+                .with_for_update()
+                .all()
+            ):
+                status.status = "AVAILABLE"
+                status.updated_at = utcnow()
+        count.status = "CANCELLED"
+        count.reviewed_by = username
+        count.reviewed_at = utcnow()
+        self.db.commit()
+        return self.serialize(count, reveal_expected=False)
 
     def review(self, count_id: int, approve: bool, username: str) -> dict:
         count = self._get(count_id, lock=True)
