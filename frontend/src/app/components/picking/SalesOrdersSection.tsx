@@ -114,7 +114,7 @@ export default function SalesOrdersSection({
             <div className="space-y-2 text-sm">
               <div className="flex justify-between">
                 <span className="text-slate-600">客戶</span>
-                <span className="font-medium text-slate-900">{order.customer}</span>
+                <span className="font-medium text-slate-900">{order.customer || '—'}</span>
               </div>
               <div className="flex justify-between">
                 <span className="text-slate-600">訂購日期</span>

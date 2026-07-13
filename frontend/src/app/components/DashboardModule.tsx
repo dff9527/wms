@@ -325,8 +325,20 @@ export default function DashboardModule() {
               <YAxis allowDecimals={false} />
               <Tooltip formatter={(value: number) => value.toLocaleString()} />
               <Legend />
-              <Bar dataKey="receiving" name="收貨" fill="#10b981" radius={[4, 4, 0, 0]} />
-              <Bar dataKey="shipping" name="出貨" fill="#8b5cf6" radius={[4, 4, 0, 0]} />
+              <Bar
+                dataKey="receiving"
+                name="收貨"
+                fill="#10b981"
+                radius={[4, 4, 0, 0]}
+                isAnimationActive={false}
+              />
+              <Bar
+                dataKey="shipping"
+                name="出貨"
+                fill="#8b5cf6"
+                radius={[4, 4, 0, 0]}
+                isAnimationActive={false}
+              />
             </BarChart>
           </ResponsiveContainer>
         </div>

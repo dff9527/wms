@@ -64,7 +64,7 @@ class TraceabilityEngine:
 
         # Inventory Info
         inventory_info = {
-            "location": lot.location_id,
+            "location": lot.location.location_code if lot.location else "",
             "currentQty": lot.quantity_on_hand,
             "reservedQty": lot.quantity_reserved or 0,
         }

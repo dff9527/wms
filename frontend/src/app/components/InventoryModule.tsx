@@ -589,11 +589,11 @@ export default function InventoryModule() {
                       {lot.qtyReserved.toLocaleString()}
                     </td>
                     <td className="whitespace-nowrap px-3 py-3 text-sm text-slate-700">
-                      {lot.receiveDate}
+                      {String(lot.receiveDate ?? '').slice(0, 10)}
                     </td>
                     <td className="px-3 py-3 text-center">
                       <span className="inline-flex size-6 items-center justify-center rounded bg-slate-100 text-xs font-medium text-slate-700">
-                        {lot.mslLevel}
+                        {lot.mslLevel || '—'}
                       </span>
                     </td>
                     <td className="px-3 py-3 text-center">{getStatusBadge(lot.status)}</td>
@@ -731,7 +731,9 @@ export default function InventoryModule() {
                 </div>
                 <div>
                   <label className="text-sm text-slate-600">MSL 等級</label>
-                  <p className="text-xl font-bold text-slate-900">Level {selectedLot.mslLevel}</p>
+                  <p className="text-xl font-bold text-slate-900">
+                    {selectedLot.mslLevel ? `Level ${selectedLot.mslLevel}` : '—'}
+                  </p>
                 </div>
               </div>
 
@@ -741,7 +743,7 @@ export default function InventoryModule() {
                   <div>
                     <label className="text-sm text-slate-600">收貨日期</label>
                     <p className="text-base font-medium text-slate-900">
-                      {selectedLot.receiveDate}
+                      {String(selectedLot.receiveDate ?? '').slice(0, 10)}
                     </p>
                   </div>
                 </div>
