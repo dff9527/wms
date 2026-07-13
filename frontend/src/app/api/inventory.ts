@@ -100,6 +100,18 @@ export async function splitLot(payload: { parentLotId: number; quantityToSplit: 
   return response.data;
 }
 
+export async function moveLot(payload: {
+  lotId: number;
+  targetLocationCode: string;
+  reason?: string;
+}) {
+  const response = await axios.post(`${API_BASE_URL}/inventory/lots/${payload.lotId}/move`, {
+    targetLocationCode: payload.targetLocationCode,
+    reason: payload.reason,
+  });
+  return response.data;
+}
+
 export async function updateLot(payload: {
   lotId: number;
   locationCode?: string;
@@ -146,6 +158,14 @@ export function useSplitLotMutation() {
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: ['inventory-lots'] });
     },
+  });
+}
+
+export function useMoveLotMutation() {
+  const queryClient = useQueryClient();
+  return useMutation({
+    mutationFn: (payload: Parameters<typeof moveLot>[0]) => moveLot(payload),
+    onSuccess: () => queryClient.invalidateQueries({ queryKey: ['inventory-lots'] }),
   });
 }
 

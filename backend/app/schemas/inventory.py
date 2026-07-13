@@ -91,3 +91,8 @@ class LotUpdateRequest(BaseModel):
 
     class Config:
         populate_by_name = True
+
+
+class MoveRequest(BaseModel):
+    targetLocationCode: str = Field(min_length=1, max_length=20)
+    reason: Optional[str] = Field(default=None, max_length=500)

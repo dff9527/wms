@@ -30,6 +30,40 @@ class PutAwayEngine:
     def __init__(self, db: Session):
         self.db = db
 
+    def validate_location(self, lot: InventoryLot, location: StorageLocation) -> None:
+        """Apply the same hard constraints used by putaway suggestions."""
+        item = self.db.query(Item).filter(Item.internal_sku == lot.internal_sku).first()
+        warehouse = None
+        if location.warehouse_id:
+            warehouse = (
+                self.db.query(Warehouse)
+                .filter(Warehouse.warehouse_id == location.warehouse_id)
+                .first()
+            )
+        if location.is_quarantine and lot.lot_status != "QUARANTINE":
+            raise ValueError(
+                "Normal inventory cannot be moved to a quarantine location"
+            )
+        if (
+            item
+            and item.item_type == "IC"
+            and not (warehouse and warehouse.is_esd_controlled)
+        ):
+            raise ValueError("IC inventory requires an ESD-controlled warehouse")
+        if (
+            location.msl_level is not None
+            and item
+            and item.msl_level
+            and item.msl_level > location.msl_level
+        ):
+            raise ValueError("Target location does not support this MSL level")
+        if (
+            location.allowed_item_types
+            and item
+            and item.item_type not in location.allowed_item_types
+        ):
+            raise ValueError("Item type is not allowed at the target location")
+
     def suggest_location_id(self, lot: InventoryLot) -> Optional[int]:
         item = self.db.query(Item).filter(Item.internal_sku == lot.internal_sku).first()
 

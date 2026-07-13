@@ -6,6 +6,7 @@ import {
   Download,
   Loader2,
   MapPin,
+  MoveRight,
   Pencil,
   Scissors,
   Search,
@@ -17,6 +18,7 @@ import type { InventoryLotRow, InventoryLotRowStatus } from '../types/wms-invent
 import {
   useAdjustLotMutation,
   useInventoryLots,
+  useMoveLotMutation,
   useSplitLotMutation,
   useUpdateLotMutation,
   useVoidLotMutation,
@@ -82,10 +84,12 @@ export default function InventoryModule() {
   const [sortBy, setSortBy] = useState<InventorySortBy>('receive_date');
   const [sortOrder, setSortOrder] = useState<'asc' | 'desc'>('desc');
   const [selectedLot, setSelectedLot] = useState<InventoryLotRow | null>(null);
-  const [actionForm, setActionForm] = useState<'adjust' | 'split' | null>(null);
+  const [actionForm, setActionForm] = useState<'adjust' | 'split' | 'move' | null>(null);
   const [adjustQty, setAdjustQty] = useState('');
   const [adjustReason, setAdjustReason] = useState('');
   const [splitQty, setSplitQty] = useState('');
+  const [moveLocation, setMoveLocation] = useState('');
+  const [moveReason, setMoveReason] = useState('');
   const [actionError, setActionError] = useState<string | null>(null);
   const [editLot, setEditLot] = useState<InventoryLotRow | null>(null);
   const [editLocationCode, setEditLocationCode] = useState('');
@@ -94,6 +98,7 @@ export default function InventoryModule() {
 
   const adjustMutation = useAdjustLotMutation();
   const splitMutation = useSplitLotMutation();
+  const moveMutation = useMoveLotMutation();
   const updateLotMutation = useUpdateLotMutation();
   const voidLotMutation = useVoidLotMutation();
   useEffect(() => {
@@ -171,6 +176,8 @@ export default function InventoryModule() {
     setAdjustQty('');
     setAdjustReason('');
     setSplitQty('');
+    setMoveLocation('');
+    setMoveReason('');
     setActionError(null);
   };
 
@@ -215,6 +222,26 @@ export default function InventoryModule() {
     try {
       await splitMutation.mutateAsync({ parentLotId: selectedLot.id, quantityToSplit: qty });
       toast.success('拆帶成功');
+      closeDetailDialog();
+    } catch (err) {
+      const message = errDetail(err);
+      setActionError(message);
+      toast.error(message);
+    }
+  };
+
+  const handleMove = async () => {
+    if (!selectedLot || !moveLocation.trim()) {
+      setActionError('請輸入目標儲位');
+      return;
+    }
+    try {
+      await moveMutation.mutateAsync({
+        lotId: selectedLot.id,
+        targetLocationCode: moveLocation.trim(),
+        reason: moveReason.trim() || undefined,
+      });
+      toast.success('儲位調撥成功');
       closeDetailDialog();
     } catch (err) {
       const message = errDetail(err);
@@ -678,6 +705,17 @@ export default function InventoryModule() {
                       <Scissors className="size-4" />
                       拆帶
                     </button>
+                    <button
+                      type="button"
+                      onClick={() => {
+                        setActionForm(actionForm === 'move' ? null : 'move');
+                        setActionError(null);
+                      }}
+                      className={`flex items-center gap-2 rounded-lg px-4 py-2 text-sm font-medium transition-colors ${actionForm === 'move' ? 'bg-blue-600 text-white' : 'bg-slate-100 text-slate-700 hover:bg-slate-200'}`}
+                    >
+                      <MoveRight className="size-4" />
+                      調撥
+                    </button>
                   </div>
 
                   {actionForm === 'adjust' && (
@@ -735,6 +773,24 @@ export default function InventoryModule() {
                         disabled={splitMutation.isPending}
                       >
                         {splitMutation.isPending ? '處理中…' : '確認拆帶'}
+                      </Button>
+                    </div>
+                  )}
+
+                  {actionForm === 'move' && (
+                    <div className="space-y-3 rounded-lg bg-slate-50 p-4">
+                      <div className="grid grid-cols-2 gap-3">
+                        <div>
+                          <label className="mb-1 block text-xs text-slate-600">目標儲位</label>
+                          <Input value={moveLocation} onChange={(e) => setMoveLocation(e.target.value)} placeholder="A-01-R1" />
+                        </div>
+                        <div>
+                          <label className="mb-1 block text-xs text-slate-600">原因</label>
+                          <Input value={moveReason} onChange={(e) => setMoveReason(e.target.value)} placeholder="補貨 / 儲位整理" />
+                        </div>
+                      </div>
+                      <Button type="button" onClick={handleMove} disabled={moveMutation.isPending}>
+                        {moveMutation.isPending ? '處理中…' : '確認調撥'}
                       </Button>
                     </div>
                   )}

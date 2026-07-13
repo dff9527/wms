@@ -11,6 +11,7 @@ from app.schemas.inventory import (
     AdjustRequest,
     SplitRequest,
     LotUpdateRequest,
+    MoveRequest,
 )
 
 # main.py mounts this under prefix="/api/v1/inventory"; do not add a second prefix here
@@ -61,6 +62,25 @@ def get_lot_detail(lot_id: int, db: Session = Depends(get_db)):
     if not lot:
         raise HTTPException(status_code=404, detail="Lot not found")
     return lot
+
+
+@router.post("/lots/{lot_id}/move")
+def move_lot(
+    lot_id: int,
+    request: MoveRequest,
+    db: Session = Depends(get_db),
+    current_user: dict = Depends(require_role("admin", "supervisor", "operator")),
+):
+    try:
+        return InventoryService(db).move_lot(
+            lot_id,
+            request.targetLocationCode,
+            current_user["username"],
+            request.reason,
+        )
+    except ValueError as exc:
+        status = 404 if "not found" in str(exc).lower() else 400
+        raise HTTPException(status_code=status, detail=str(exc)) from exc
 
 
 @router.patch("/lots/{lot_id}", response_model=LotOut)

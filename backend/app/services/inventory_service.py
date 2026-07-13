@@ -6,9 +6,11 @@ from sqlalchemy.orm import Session
 
 from app.core.warehouse.adjustment import AdjustmentService
 from app.schemas.inventory import LotOut, LotListQuery, LotPageOut
-from app.models.inventory import InventoryLot  # type: ignore
+from app.models.inventory import InventoryLot, InventoryTransaction  # type: ignore
 from app.models.item import Item
 from app.models.storage import StorageLocation  # type: ignore
+from app.models.warehouse import LocationStatus
+from app.core.warehouse.putaway import PutAwayEngine
 
 
 class InventoryService:
@@ -203,3 +205,72 @@ class InventoryService:
             quantity_to_split=request_data["quantityToSplit"],
             executed_by=executed_by,
         )
+
+    def move_lot(
+        self,
+        lot_id: int,
+        target_location_code: str,
+        executed_by: str,
+        reason: str | None,
+    ) -> dict:
+        lot = (
+            self.db.query(InventoryLot)
+            .filter(InventoryLot.lot_id == lot_id)
+            .with_for_update(of=InventoryLot)
+            .first()
+        )
+        if not lot:
+            raise ValueError(f"Lot {lot_id} not found")
+        if lot.lot_status in {"SHIPPED", "VOID"}:
+            raise ValueError(f"Cannot move a {lot.lot_status.lower()} lot")
+        target = (
+            self.db.query(StorageLocation)
+            .filter(StorageLocation.location_code == target_location_code)
+            .first()
+        )
+        if not target:
+            raise ValueError(f"Location '{target_location_code}' not found")
+        if lot.location_id == target.location_id:
+            raise ValueError("Lot is already at the target location")
+        locked = (
+            self.db.query(LocationStatus)
+            .filter(
+                LocationStatus.location_id.in_(
+                    [
+                        location_id
+                        for location_id in [lot.location_id, target.location_id]
+                        if location_id
+                    ]
+                ),
+                LocationStatus.status == "LOCKED",
+            )
+            .with_for_update()
+            .first()
+        )
+        if locked:
+            raise ValueError("Source or target location is frozen for cycle counting")
+        PutAwayEngine(self.db).validate_location(lot, target)
+        source_id = lot.location_id
+        lot.location_id = target.location_id
+        self.db.add(
+            InventoryTransaction(
+                transaction_type="MOVE",
+                lot_id=lot.lot_id,
+                quantity_change=0,
+                quantity_before=lot.quantity_on_hand,
+                quantity_after=lot.quantity_on_hand,
+                from_location_id=source_id,
+                to_location_id=target.location_id,
+                reference_type="MOVE",
+                executed_by=executed_by,
+                notes=reason or "Inventory location transfer",
+            )
+        )
+        self.db.commit()
+        return {
+            "success": True,
+            "lotId": lot.lot_id,
+            "fromLocationId": source_id,
+            "toLocationId": target.location_id,
+            "targetLocationCode": target.location_code,
+        }
