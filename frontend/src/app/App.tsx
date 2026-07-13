@@ -163,8 +163,8 @@ export default function App() {
                 <Warehouse className="size-6 text-white" />
               </div>
               <div>
-                <h1 className="text-xl font-bold text-slate-900">半導體 WMS 系統</h1>
-                <p className="text-sm text-slate-500">Semiconductor Warehouse Management System</p>
+                <h1 className="text-xl font-bold text-slate-900">WMS 系統</h1>
+                <p className="text-sm text-slate-500">Warehouse Management System</p>
               </div>
             </div>
 
@@ -276,7 +276,7 @@ export default function App() {
                 <Warehouse className="size-5 text-white" />
               </div>
               <div className="min-w-0 group-data-[collapsible=icon]:hidden">
-                <p className="truncate text-sm font-bold">半導體 WMS</p>
+                <p className="truncate text-sm font-bold">WMS</p>
                 <p className="truncate text-xs text-sidebar-foreground/60">Warehouse Management</p>
               </div>
             </Link>
@@ -331,7 +331,7 @@ export default function App() {
         <SidebarInset className="min-w-0 bg-slate-50">
           <header className="flex h-14 shrink-0 items-center border-b border-slate-200 bg-white px-4 md:hidden">
             <SidebarTrigger />
-            <span className="ml-2 font-semibold text-slate-900">半導體 WMS 系統</span>
+            <span className="ml-2 font-semibold text-slate-900">WMS 系統</span>
           </header>
           <div className="min-h-0 flex-1 overflow-auto">
             <Routes>

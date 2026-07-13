@@ -52,6 +52,18 @@ export async function getVendors(): Promise<Vendor[]> {
   }
 }
 
+export async function createVendor(vendorCode: string, vendorName: string): Promise<Vendor> {
+  try {
+    const res = await axios.post(`${API_BASE_URL}/api/v1/vendors`, {
+      vendor_code: vendorCode,
+      vendor_name: vendorName,
+    });
+    return res.data;
+  } catch (err) {
+    return handleAxiosError(err);
+  }
+}
+
 export async function getPatterns(
   vendorId?: string | null,
   includeInactive = false

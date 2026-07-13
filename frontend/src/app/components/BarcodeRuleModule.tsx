@@ -9,6 +9,7 @@ import {
 } from 'lucide-react';
 import {
   getVendors,
+  createVendor,
   getPatterns,
   createPattern,
   togglePattern,
@@ -103,6 +104,36 @@ export default function BarcodeRuleModule() {
 
   // 權限檢查
   const isAdmin = getRole() === 'admin';
+
+  // 新增供應商(inline)
+  const [showVendorForm, setShowVendorForm] = useState(false);
+  const [newVendorCode, setNewVendorCode] = useState('');
+  const [newVendorName, setNewVendorName] = useState('');
+  const [vendorError, setVendorError] = useState<string | null>(null);
+  const [isCreatingVendor, setIsCreatingVendor] = useState(false);
+
+  const handleCreateVendor = async () => {
+    if (!newVendorCode.trim() || !newVendorName.trim()) {
+      setVendorError('供應商代碼與名稱皆為必填');
+      return;
+    }
+    setVendorError(null);
+    setIsCreatingVendor(true);
+    try {
+      const created = await createVendor(newVendorCode.trim(), newVendorName.trim());
+      const data = await getVendors();
+      setVendors(data);
+      setSelectedVendorId(String(created.vendor_id));
+      setShowVendorForm(false);
+      setNewVendorCode('');
+      setNewVendorName('');
+      toast.success(`供應商 ${created.vendor_name} 已建立`);
+    } catch (err: unknown) {
+      setVendorError((err as Error).message || '新增供應商失敗');
+    } finally {
+      setIsCreatingVendor(false);
+    }
+  };
 
   // Fetch Vendors on Mount
   useEffect(() => {
@@ -384,6 +415,19 @@ export default function BarcodeRuleModule() {
             </select>
           </div>
 
+          {isAdmin && (
+            <button
+              type="button"
+              onClick={() => {
+                setShowVendorForm((s) => !s);
+                setVendorError(null);
+              }}
+              className="rounded-md border border-slate-300 px-3 py-2 text-sm font-medium text-slate-700 hover:bg-slate-50"
+            >
+              新增供應商
+            </button>
+          )}
+
           {error && (
             <div className="text-red-600 text-sm flex items-center gap-1">
               <AlertTriangle className="w-4 h-4" />
@@ -391,6 +435,43 @@ export default function BarcodeRuleModule() {
             </div>
           )}
         </div>
+
+        {isAdmin && showVendorForm && (
+          <div className="mt-4 flex flex-wrap items-end gap-3 rounded-md border border-slate-200 bg-slate-50 p-4">
+            <div>
+              <label className="block text-sm font-medium text-slate-700 mb-1">供應商代碼</label>
+              <input
+                value={newVendorCode}
+                onChange={(e) => setNewVendorCode(e.target.value)}
+                placeholder="如 ST"
+                className="w-40 rounded-md border border-slate-300 px-3 py-2 text-sm focus:border-blue-500 focus:outline-none focus:ring-1 focus:ring-blue-500"
+              />
+            </div>
+            <div>
+              <label className="block text-sm font-medium text-slate-700 mb-1">供應商名稱</label>
+              <input
+                value={newVendorName}
+                onChange={(e) => setNewVendorName(e.target.value)}
+                placeholder="如 STMicroelectronics"
+                className="w-64 rounded-md border border-slate-300 px-3 py-2 text-sm focus:border-blue-500 focus:outline-none focus:ring-1 focus:ring-blue-500"
+              />
+            </div>
+            <button
+              type="button"
+              onClick={handleCreateVendor}
+              disabled={isCreatingVendor}
+              className="rounded-md bg-blue-600 px-4 py-2 text-sm font-medium text-white hover:bg-blue-700 disabled:opacity-50"
+            >
+              {isCreatingVendor ? '建立中...' : '確認新增'}
+            </button>
+            {vendorError && (
+              <p className="text-sm text-red-600 flex items-center gap-1">
+                <AlertTriangle className="w-4 h-4" />
+                {vendorError}
+              </p>
+            )}
+          </div>
+        )}
       </div>
 
       {/* Patterns Table */}
