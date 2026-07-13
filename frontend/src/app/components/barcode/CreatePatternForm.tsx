@@ -1,8 +1,11 @@
 import type { FormEvent } from 'react';
+import { Tabs, TabsContent, TabsList, TabsTrigger } from '@radix-ui/react-tabs';
 import { PlusCircle, AlertTriangle, Loader2 } from 'lucide-react';
+import AutoPatternForm from './AutoPatternForm';
 
 interface CreatePatternFormProps {
   selectedVendorId: string;
+  onPatternCreated: () => void;
   newPatternName: string;
   setNewPatternName: (value: string) => void;
   newRegex: string;
@@ -18,6 +21,7 @@ interface CreatePatternFormProps {
 
 export default function CreatePatternForm({
   selectedVendorId,
+  onPatternCreated,
   newPatternName,
   setNewPatternName,
   newRegex,
@@ -30,6 +34,61 @@ export default function CreatePatternForm({
   isCreating,
   onCreatePattern,
 }: CreatePatternFormProps) {
+  return (
+    <Tabs defaultValue="auto" className="w-full">
+      <TabsList className="bg-slate-100 p-1 rounded-lg inline-flex mb-6">
+        <TabsTrigger
+          value="auto"
+          className="px-4 py-2 text-sm font-medium rounded-md data-[state=active]:bg-white data-[state=active]:shadow-sm data-[state=active]:text-slate-900 focus-visible:ring-2 focus-visible:ring-blue-500 focus-visible:ring-offset-1 transition-all"
+        >
+          自動產生(建議)
+        </TabsTrigger>
+        <TabsTrigger
+          value="manual"
+          className="px-4 py-2 text-sm font-medium rounded-md data-[state=active]:bg-white data-[state=active]:shadow-sm data-[state=active]:text-slate-900 focus-visible:ring-2 focus-visible:ring-blue-500 focus-visible:ring-offset-1 transition-all"
+        >
+          手動新增規則(進階)
+        </TabsTrigger>
+      </TabsList>
+
+      <TabsContent value="auto" className="mt-0">
+        <AutoPatternForm selectedVendorId={selectedVendorId} onCreated={onPatternCreated} />
+      </TabsContent>
+
+      <TabsContent value="manual" className="mt-0">
+        <ManualPatternForm
+          selectedVendorId={selectedVendorId}
+          newPatternName={newPatternName}
+          setNewPatternName={setNewPatternName}
+          newRegex={newRegex}
+          setNewRegex={setNewRegex}
+          newFieldMapping={newFieldMapping}
+          setNewFieldMapping={setNewFieldMapping}
+          newPriority={newPriority}
+          setNewPriority={setNewPriority}
+          createError={createError}
+          isCreating={isCreating}
+          onCreatePattern={onCreatePattern}
+        />
+      </TabsContent>
+    </Tabs>
+  );
+}
+
+function ManualPatternForm({
+  selectedVendorId,
+  newPatternName,
+  setNewPatternName,
+  newRegex,
+  setNewRegex,
+  newFieldMapping,
+  setNewFieldMapping,
+  newPriority,
+  setNewPriority,
+  createError,
+  isCreating,
+  onCreatePattern,
+}: Omit<CreatePatternFormProps, 'onPatternCreated'>) {
   return (
     <div className="bg-white rounded-lg border border-slate-200 p-6 shadow-sm max-w-2xl">
       <h3 className="text-base font-medium text-slate-900 mb-4">新增條碼規則</h3>

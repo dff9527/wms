@@ -64,6 +64,32 @@ export async function createVendor(vendorCode: string, vendorName: string): Prom
   }
 }
 
+export interface InferPreview {
+  barcode: string;
+  parsed: Record<string, string>;
+}
+
+export interface InferResult {
+  regex_rule: string;
+  field_mapping: Record<string, string>;
+  previews: InferPreview[];
+}
+
+export async function inferPattern(
+  samples: string[],
+  labels: Record<string, string>
+): Promise<InferResult> {
+  try {
+    const res = await axios.post(`${API_BASE_URL}/api/v1/barcodes/patterns/infer`, {
+      samples,
+      labels,
+    });
+    return res.data;
+  } catch (err) {
+    return handleAxiosError(err);
+  }
+}
+
 export async function getPatterns(
   vendorId?: string | null,
   includeInactive = false

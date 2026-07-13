@@ -1,6 +1,8 @@
 from fastapi import APIRouter, Depends, HTTPException
+from pydantic import BaseModel, Field
 from sqlalchemy.orm import Session
 from app.api.deps import get_db, get_current_user, require_role
+from app.core.barcode.inference import InferenceError, infer_pattern
 from app.services.barcode_service import (
     parse_barcode,
     list_patterns,
@@ -38,6 +40,23 @@ def scan_parse(
         )
 
     return result
+
+
+class InferPatternRequest(BaseModel):
+    samples: list[str] = Field(min_length=1, max_length=10)
+    labels: dict[str, str]
+
+
+@router.post("/patterns/infer")
+def infer_pattern_endpoint(
+    req: InferPatternRequest,
+    _current_user: dict = Depends(require_role("admin")),
+):
+    """由樣本 + 欄位標註自動推導規則(純 Python,dry-run 不入庫)。"""
+    try:
+        return infer_pattern(req.samples, req.labels)
+    except InferenceError as e:
+        raise HTTPException(status_code=400, detail=str(e))
 
 
 @router.get("/patterns")

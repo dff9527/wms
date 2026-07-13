@@ -171,6 +171,17 @@ export default function BarcodeRuleModule() {
     }
   }, [selectedVendorId, showInactive]);
 
+  // 自動產生規則儲存後重抓清單
+  const refreshPatterns = async () => {
+    if (!selectedVendorId) return;
+    try {
+      const data = await getPatterns(selectedVendorId, showInactive);
+      setPatterns(data);
+    } catch {
+      /* 清單刷新失敗不擋流程 */
+    }
+  };
+
   // Handlers
   const handleTogglePattern = async (patternId: string, currentActive: boolean) => {
     setTogglingPatternId(patternId);
@@ -585,6 +596,7 @@ export default function BarcodeRuleModule() {
         createError={createError}
         isCreating={isCreating}
         onCreatePattern={handleCreatePattern}
+        onPatternCreated={refreshPatterns}
       />
 
       {/* Edit Pattern Dialog */}
