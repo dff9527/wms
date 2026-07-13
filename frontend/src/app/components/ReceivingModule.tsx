@@ -1,4 +1,4 @@
-import { useMemo, useState } from 'react';
+import { useEffect, useMemo, useRef, useState } from 'react';
 import {
   AlertTriangle,
   CheckCircle2,
@@ -72,6 +72,7 @@ function formatDate(value?: string | null) {
 }
 
 export default function ReceivingModule() {
+  const scanInputRef = useRef<HTMLInputElement>(null);
   const role = getRole();
   const isAdmin = role === 'admin';
   const canCompleteIQC = ['admin', 'qc'].includes(role);
@@ -122,6 +123,10 @@ export default function ReceivingModule() {
 
   const rows = useMemo(() => (isPending || !data?.items ? [] : data.items), [data?.items, isPending]);
 
+  useEffect(() => {
+    scanInputRef.current?.focus();
+  }, []);
+
   const resetNewPOForm = () => {
     setNewPOForm({
       poNumber: '',
@@ -149,6 +154,7 @@ export default function ReceivingModule() {
         lotCode: response.parsed.lotCode,
         dateCode: response.parsed.dateCode,
       });
+      requestAnimationFrame(() => scanInputRef.current?.focus());
     } catch (error) {
       const message = error instanceof Error ? error.message : '掃描失敗，請稍後再試';
       setParsedData(null);
@@ -405,7 +411,7 @@ export default function ReceivingModule() {
         </div>
       )}
 
-      <div className="rounded-lg border border-slate-200 bg-white p-6">
+      <div className="rounded-lg border border-slate-200 bg-white p-4 sm:p-6">
         <div className="mb-4 flex items-center gap-3">
           <ScanBarcode className="size-6 text-blue-600" />
           <h2 className="text-xl font-semibold text-slate-900">條碼掃描與解析</h2>
@@ -417,16 +423,26 @@ export default function ReceivingModule() {
               <label className="mb-2 block text-sm font-medium text-slate-700">掃描供應商條碼</label>
               <div className="flex gap-2">
                 <Input
+                  ref={scanInputRef}
                   type="text"
                   value={scannedBarcode}
                   onChange={(e) => setScannedBarcode(e.target.value)}
-                  onKeyDown={(e) => e.key === 'Enter' && handleScanBarcode()}
+                  onKeyDown={(e) => {
+                    if (e.key === 'Enter') {
+                      e.preventDefault();
+                      void handleScanBarcode();
+                    }
+                  }}
                   placeholder="請掃描或輸入條碼…"
+                  autoComplete="off"
+                  inputMode="text"
+                  className="h-12 text-base font-mono"
                 />
                 <Button
                   type="button"
                   onClick={handleScanBarcode}
                   disabled={scanMutation.isPending || !scannedBarcode.trim()}
+                  className="h-12 min-w-20 px-5 text-base"
                 >
                   {scanMutation.isPending ? '解析中...' : '解析'}
                 </Button>
@@ -496,7 +512,7 @@ export default function ReceivingModule() {
                 <div className="flex gap-2 pt-4">
                   <Button
                     type="button"
-                    className="flex-1 bg-green-600 hover:bg-green-700"
+                    className="min-h-12 flex-1 bg-green-600 text-base hover:bg-green-700"
                     onClick={handleReceive}
                     disabled={receiveMutation.isPending}
                   >

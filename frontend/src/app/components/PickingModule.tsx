@@ -1,4 +1,4 @@
-import { useState, useEffect } from 'react';
+import { useState, useEffect, useRef } from 'react';
 import axios from 'axios';
 import {
   CheckCircle,
@@ -81,6 +81,7 @@ function mapSalesOrderItem(raw: any): SalesOrderItem {
 }
 
 export default function PickingModule() {
+  const pickScanRef = useRef<HTMLInputElement>(null);
   const isAdmin = getRole() === 'admin';
   const [allocation, setAllocation] = useState<FifoAllocationSummary | null>(null);
   const [pickWave, setPickWave] = useState<PickWaveTask[]>([]);
@@ -107,6 +108,7 @@ export default function PickingModule() {
 
   // Picking mode state
   const [isPickingMode, setIsPickingMode] = useState(false);
+  const [pickBarcode, setPickBarcode] = useState('');
 
   const [salesOrders, setSalesOrders] = useState<SalesOrderItem[]>([]);
   const [showCancelledOrders, setShowCancelledOrders] = useState(false);
@@ -784,6 +786,22 @@ export default function PickingModule() {
     </tr>
   );
 
+  const handlePickScan = () => {
+    const barcode = pickBarcode.trim();
+    if (!barcode) return;
+    const task = pickWaveWithPicking.find(
+      (candidate) => !candidate.isConfirmed && candidate.internalBarcode === barcode,
+    );
+    if (!task) {
+      toast.error('條碼不屬於目前待揀任務，請確認批次');
+      setPickBarcode('');
+      requestAnimationFrame(() => pickScanRef.current?.focus());
+      return;
+    }
+    setPickBarcode('');
+    void handleConfirmTask(task).finally(() => pickScanRef.current?.focus());
+  };
+
   // In regular mode (not picking), show tasks as read-only
   const renderReadOnlyTask = (task: PickWaveTask) => (
     <tr key={task.sequence} className="border-b border-slate-100 hover:bg-slate-50">
@@ -840,7 +858,7 @@ export default function PickingModule() {
   );
 
   return (
-    <div className="p-6 space-y-6">
+    <div className="space-y-4 p-3 sm:space-y-6 sm:p-6">
       <div className="bg-white rounded-lg border border-slate-200 p-6">
         <div className="flex items-center justify-between mb-4">
           <div>
@@ -1059,6 +1077,38 @@ export default function PickingModule() {
           </div>
         ) : (
           <>
+            {isPickingMode && (
+              <div className="sticky top-2 z-20 mb-4 rounded-xl border-2 border-blue-300 bg-white p-3 shadow-lg">
+                <label className="mb-2 block text-sm font-semibold text-blue-900">
+                  掃描目前揀貨批次條碼
+                </label>
+                <div className="flex gap-2">
+                  <input
+                    ref={pickScanRef}
+                    autoFocus
+                    autoComplete="off"
+                    value={pickBarcode}
+                    onChange={(event) => setPickBarcode(event.target.value)}
+                    onKeyDown={(event) => {
+                      if (event.key === 'Enter') {
+                        event.preventDefault();
+                        handlePickScan();
+                      }
+                    }}
+                    placeholder="掃描內部條碼後按 Enter"
+                    className="h-12 min-w-0 flex-1 rounded-lg border border-slate-300 px-3 font-mono text-base outline-none focus:ring-2 focus:ring-blue-500"
+                  />
+                  <button
+                    type="button"
+                    onClick={handlePickScan}
+                    className="min-h-12 min-w-20 rounded-lg bg-blue-600 px-4 font-semibold text-white hover:bg-blue-700"
+                  >
+                    確認
+                  </button>
+                </div>
+              </div>
+            )}
+
             <div className="mb-4 p-3 bg-blue-50 rounded-lg border border-blue-200 text-sm">
               <div className="flex items-center justify-between">
                 <div className="flex items-center gap-4">
@@ -1086,7 +1136,7 @@ export default function PickingModule() {
               </div>
             </div>
 
-            <div className="overflow-x-auto">
+            <div className="overflow-x-auto rounded-lg border border-slate-100">
               <table className="w-full min-w-[1320px]">
                 <thead className="bg-slate-50">
                   <tr className="border-b border-slate-200">
