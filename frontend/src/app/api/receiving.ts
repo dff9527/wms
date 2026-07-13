@@ -251,8 +251,13 @@ export interface Vendor {
 }
 
 export async function listVendors(): Promise<Vendor[]> {
-  const response = await axios.get<{ items?: Vendor[] }>(`${API_BASE_URL}/api/v1/vendors`);
-  return Array.isArray(response.data) ? response.data : response.data.items || [];
+  const response = await axios.get(`${API_BASE_URL}/api/v1/vendors`);
+  const raw = Array.isArray(response.data) ? response.data : response.data?.items || [];
+  // 後端回傳 snake_case(vendor_id / vendor_name),這裡統一轉 camelCase
+  return raw.map((v: any) => ({
+    vendorId: Number(v?.vendorId ?? v?.vendor_id ?? 0),
+    vendorName: v?.vendorName ?? v?.vendor_name ?? '',
+  }));
 }
 
 export interface CreatePORequest {
