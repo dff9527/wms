@@ -23,7 +23,7 @@ class CycleCountService:
 
     def list_counts(self) -> list[dict]:
         counts = self.db.query(CycleCount).order_by(CycleCount.created_at.desc()).all()
-        return [self.serialize(count, reveal_expected=True) for count in counts]
+        return [self.serialize(count, reveal_expected=False) for count in counts]
 
     def create(
         self, location_ids: list[int], internal_skus: list[str] | None, username: str
