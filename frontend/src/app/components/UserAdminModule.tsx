@@ -1,4 +1,5 @@
 import { useState } from 'react';
+import { toast } from 'sonner';
 import {
   Search,
   Plus,
@@ -156,9 +157,12 @@ export default function UserAdminModule() {
         role: newUserForm.role,
         full_name: newUserForm.full_name.trim() || undefined,
       });
+      toast.success('使用者已建立');
       closeAddDialog();
     } catch (err) {
-      setAddError(errDetail(err));
+      const message = errDetail(err);
+      setAddError(message);
+      toast.error(message);
     }
   };
 
@@ -166,9 +170,11 @@ export default function UserAdminModule() {
   const handleUpdateUser = async (userId: number, field: keyof User, value: any) => {
     try {
       await updateMutation.mutateAsync({ userId, payload: { [field]: value } });
+      toast.success('使用者資料已更新');
     } catch (err) {
-      // 不顯示錯誤(避免干擾使用者),只在控制台記錄
-      console.error(errDetail(err));
+      const message = errDetail(err);
+      console.error(message);
+      toast.error(message);
     }
   };
 
@@ -184,9 +190,12 @@ export default function UserAdminModule() {
 
     try {
       await passwordMutation.mutateAsync({ userId, newPassword });
+      toast.success('密碼已重設');
       closePasswordDialog();
     } catch (err) {
-      setPasswordError(errDetail(err));
+      const message = errDetail(err);
+      setPasswordError(message);
+      toast.error(message);
     }
   };
 
@@ -205,9 +214,12 @@ export default function UserAdminModule() {
         userId: deleteTarget.user_id,
         payload: { is_active: false },
       });
+      toast.success('使用者已停用');
       setDeleteTarget(null);
     } catch (err) {
-      setDeleteError(errDetail(err));
+      const message = errDetail(err);
+      setDeleteError(message);
+      toast.error(message);
     }
   };
 
@@ -227,9 +239,12 @@ export default function UserAdminModule() {
         userId: editTarget.user_id,
         payload: { full_name: editName.trim() || null },
       });
+      toast.success('姓名已更新');
       setEditTarget(null);
     } catch (err) {
-      setEditError(errDetail(err));
+      const message = errDetail(err);
+      setEditError(message);
+      toast.error(message);
     }
   };
 

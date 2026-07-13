@@ -1,6 +1,7 @@
 import { useEffect, useState } from 'react';
 import axios from 'axios';
 import { Search, Package, TruckIcon, Factory, Building2, ChevronRight } from 'lucide-react';
+import { toast } from 'sonner';
 import type { TraceForwardResult } from '../types/wms-inventory';
 
 interface TraceabilityModuleProps {
@@ -25,11 +26,15 @@ export default function TraceabilityModule({
     if (!searchBarcode.trim()) return;
     const trimmed = searchBarcode.trim();
     if (trimmed.length > 128) {
-      setError('查詢字串過長（最多 128 字元）');
+      const message = '查詢字串過長（最多 128 字元）';
+      setError(message);
+      toast.error(message);
       return;
     }
     if (!/^[A-Za-z0-9\-_.]+$/.test(trimmed)) {
-      setError('查詢字串包含不允許的字元');
+      const message = '查詢字串包含不允許的字元';
+      setError(message);
+      toast.error(message);
       return;
     }
 
@@ -95,6 +100,7 @@ export default function TraceabilityModule({
           setTraceResult(partial);
           // Show informational banner, not an error
           setError('部分追溯 — 僅找到逆向批次資料，正向追溯鏈不可用');
+          toast('部分追溯：僅找到逆向批次資料');
           return;
         }
       } catch (backErr: any) {
@@ -105,8 +111,11 @@ export default function TraceabilityModule({
 
       // Neither found
       setError('找不到對應的批次或條碼');
+      toast.error('找不到對應的批次或條碼');
     } catch (err: any) {
-      setError(err.response?.data?.detail || 'Traceability search failed');
+      const message = err.response?.data?.detail || 'Traceability search failed';
+      setError(message);
+      toast.error(Array.isArray(message) ? message.join(', ') : String(message));
     } finally {
       setLoading(false);
     }

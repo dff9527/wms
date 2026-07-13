@@ -1,5 +1,6 @@
 import React, { useState, useEffect } from 'react';
 import { Tabs, TabsContent, TabsList, TabsTrigger } from '@radix-ui/react-tabs';
+import { toast } from 'sonner';
 import {
   PlusCircle,
   AlertTriangle,
@@ -77,7 +78,6 @@ export default function BarcodeRuleModule() {
   const [newPriority, setNewPriority] = useState<number>(10);
   const [createError, setCreateError] = useState<string | null>(null);
   const [isCreating, setIsCreating] = useState(false);
-  const [createSuccess, setCreateSuccess] = useState<boolean>(false);
 
   // AI Learn States
   const [aiSamples, setAiSamples] = useState('');
@@ -178,7 +178,6 @@ export default function BarcodeRuleModule() {
     e.preventDefault();
     setIsCreating(true);
     setCreateError(null);
-    setCreateSuccess(false);
 
     let parsedMapping: Record<string, string>;
     try {
@@ -209,8 +208,7 @@ export default function BarcodeRuleModule() {
         const data = await getPatterns(selectedVendorId);
         setPatterns(data);
       }
-      setCreateSuccess(true);
-      setTimeout(() => setCreateSuccess(false), 3000);
+      toast.success('規則已成功建立');
     } catch (err: unknown) {
       const errObj = err as Error & { status?: number };
       if (errObj.status === 400) {
@@ -320,6 +318,7 @@ export default function BarcodeRuleModule() {
         const data = await getPatterns(selectedVendorId, showInactive);
         setPatterns(data);
       }
+      toast.success('規則已更新');
     } catch (err: unknown) {
       setEditError((err as Error).message || '編輯失敗');
     } finally {
@@ -349,6 +348,7 @@ export default function BarcodeRuleModule() {
       // 如果停用後清單為空且 showInactive 為 false,保持不變;否則 refetch
       const data = await getPatterns(selectedVendorId, showInactive);
       setPatterns(data);
+      toast.success('規則已停用');
     } catch (err: unknown) {
       setDeleteError((err as Error).message || '刪除失敗');
     } finally {
@@ -595,13 +595,6 @@ export default function BarcodeRuleModule() {
               <div className="mb-4 p-3 bg-red-50 border border-red-200 text-red-700 text-sm rounded flex items-center gap-2">
                 <AlertTriangle className="w-4 h-4" />
                 {createError}
-              </div>
-            )}
-
-            {createSuccess && (
-              <div className="mb-4 p-3 bg-green-50 border border-green-200 text-green-700 text-sm rounded flex items-center gap-2">
-                <CheckCircle2 className="w-4 h-4" />
-                規則已成功建立
               </div>
             )}
 

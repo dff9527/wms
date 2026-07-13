@@ -42,9 +42,9 @@ export default function DashboardModule() {
 
   // Build pie chart data from real inventory statuses
   const inventoryByStatus = [
-    { name: '可用 (Available)', value: availableQty },
-    { name: 'QC待檢 (QC Hold)', value: statusQtys['qc_hold'] ?? 0 },
-    { name: '隔離 (Quarantine)', value: statusQtys['quarantine'] ?? 0 },
+    { name: '可用', value: availableQty },
+    { name: 'QC待檢', value: statusQtys['qc_hold'] ?? 0 },
+    { name: '隔離', value: statusQtys['quarantine'] ?? 0 },
     {
       name: '其他',
       value: Math.max(

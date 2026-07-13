@@ -1,6 +1,7 @@
 import { useState } from 'react';
 import axios from 'axios';
 import { KeyRound } from 'lucide-react';
+import { toast } from 'sonner';
 import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogFooter } from './ui/dialog';
 import { Button } from './ui/button';
 import { Input } from './ui/input';
@@ -18,7 +19,6 @@ export default function ChangePasswordDialog({ open, onClose }: Props) {
   const [newPassword, setNewPassword] = useState('');
   const [confirmPassword, setConfirmPassword] = useState('');
   const [error, setError] = useState('');
-  const [success, setSuccess] = useState('');
   const [loading, setLoading] = useState(false);
 
   const handleSubmit = async (e: React.FormEvent) => {
@@ -27,11 +27,15 @@ export default function ChangePasswordDialog({ open, onClose }: Props) {
 
     // 前端驗證
     if (newPassword.length < 8) {
-      setError('新密碼至少需要 8 個字元');
+      const message = '新密碼至少需要 8 個字元';
+      setError(message);
+      toast.error(message);
       return;
     }
     if (newPassword !== confirmPassword) {
-      setError('兩次新密碼不一致');
+      const message = '兩次新密碼不一致';
+      setError(message);
+      toast.error(message);
       return;
     }
 
@@ -54,11 +58,10 @@ export default function ChangePasswordDialog({ open, onClose }: Props) {
       setNewPassword('');
       setConfirmPassword('');
       setLoading(false);
-      setSuccess('密碼已更新');
+      toast.success('密碼已更新');
 
       // 顯示成功訊息後 1 秒關閉
       setTimeout(() => {
-        setSuccess('');
         onClose();
       }, 1000);
     } catch (err) {
@@ -66,9 +69,13 @@ export default function ChangePasswordDialog({ open, onClose }: Props) {
       const detail = axios.isAxiosError(err) ? err.response?.data?.detail : undefined;
       const status = axios.isAxiosError(err) ? err.response?.status : undefined;
       if (status === 400) {
-        setError(typeof detail === 'string' ? detail : '舊密碼不正確');
+        const message = typeof detail === 'string' ? detail : '舊密碼不正確';
+        setError(message);
+        toast.error(message);
       } else {
-        setError(typeof detail === 'string' ? detail : '密碼更新失敗，請稍後再試');
+        const message = typeof detail === 'string' ? detail : '密碼更新失敗，請稍後再試';
+        setError(message);
+        toast.error(message);
       }
     }
   };
@@ -84,12 +91,6 @@ export default function ChangePasswordDialog({ open, onClose }: Props) {
           {error && (
             <div className="bg-red-50 border border-red-200 text-red-700 px-4 py-3 rounded-lg text-sm">
               {error}
-            </div>
-          )}
-
-          {success && (
-            <div className="bg-green-50 border border-green-200 text-green-700 px-4 py-3 rounded-lg text-sm">
-              {success}
             </div>
           )}
 
