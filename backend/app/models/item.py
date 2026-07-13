@@ -2,7 +2,7 @@ from __future__ import annotations
 
 from datetime import datetime
 
-from sqlalchemy import Boolean, CHAR, DateTime, Integer, String, Text, func
+from sqlalchemy import Boolean, CHAR, DateTime, Integer, Numeric, String, Text, func
 from sqlalchemy.orm import Mapped, mapped_column
 
 from app.db.base import Base
@@ -19,6 +19,8 @@ class Item(Base):
     mpq: Mapped[int | None] = mapped_column(Integer)
     spq: Mapped[int | None] = mapped_column(Integer)
     base_unit: Mapped[str] = mapped_column(String(10), default="PCS")
+    unit_weight_kg: Mapped[float | None] = mapped_column(Numeric(12, 6))
+    unit_volume_cbm: Mapped[float | None] = mapped_column(Numeric(14, 9))
     msl_level: Mapped[int | None] = mapped_column(Integer)
     rohs_compliant: Mapped[bool] = mapped_column(Boolean, default=True)
     reach_compliant: Mapped[bool] = mapped_column(Boolean, default=True)

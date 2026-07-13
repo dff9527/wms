@@ -19,9 +19,7 @@ class PutAwayEngine:
       - 同料號集中 (clustering)
       - 儲位粒度:BIN > SHELF > RACK > AISLE > ZONE
 
-    註:schema 的 capacity_kg/capacity_cbm 為重量/體積容量,但料件主檔
-    沒有單件重量/體積資料,無法換算,容量檢核留待第二階段。
-    (舊版把 capacity_kg 直接和「件數」比較,單位錯誤,已移除。)
+    容量檢核以 items 單件重量/體積乘上現有與待上架數量，比對儲位 kg/cbm。
     """
 
     # 儲位粒度偏好分數
@@ -63,6 +61,46 @@ class PutAwayEngine:
             and item.item_type not in location.allowed_item_types
         ):
             raise ValueError("Item type is not allowed at the target location")
+        self.validate_capacity(lot, location, item)
+
+    def validate_capacity(
+        self, lot: InventoryLot, location: StorageLocation, item: Item | None = None
+    ) -> None:
+        item = (
+            item
+            or self.db.query(Item).filter(Item.internal_sku == lot.internal_sku).first()
+        )
+        if not item:
+            return
+        current_weight, current_volume = (
+            self.db.query(
+                func.coalesce(
+                    func.sum(InventoryLot.quantity_on_hand * Item.unit_weight_kg), 0
+                ),
+                func.coalesce(
+                    func.sum(InventoryLot.quantity_on_hand * Item.unit_volume_cbm), 0
+                ),
+            )
+            .join(Item, InventoryLot.internal_sku == Item.internal_sku)
+            .filter(
+                InventoryLot.location_id == location.location_id,
+                InventoryLot.lot_status.notin_(["SHIPPED", "VOID"]),
+                InventoryLot.lot_id != lot.lot_id,
+            )
+            .one()
+        )
+        required_weight = lot.quantity_on_hand * (item.unit_weight_kg or 0)
+        required_volume = lot.quantity_on_hand * (item.unit_volume_cbm or 0)
+        if (
+            location.capacity_kg is not None
+            and current_weight + required_weight > location.capacity_kg
+        ):
+            raise ValueError("Target location weight capacity would be exceeded")
+        if (
+            location.capacity_cbm is not None
+            and current_volume + required_volume > location.capacity_cbm
+        ):
+            raise ValueError("Target location volume capacity would be exceeded")
 
     def suggest_location_id(self, lot: InventoryLot) -> Optional[int]:
         item = self.db.query(Item).filter(Item.internal_sku == lot.internal_sku).first()
@@ -102,6 +140,10 @@ class PutAwayEngine:
                 and item.msl_level
                 and item.msl_level > loc.msl_level
             ):
+                continue
+            try:
+                self.validate_capacity(lot, loc, item)
+            except ValueError:
                 continue
             # 料件類型白名單
             if (

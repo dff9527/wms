@@ -15,6 +15,7 @@ from app.models.vendor import VendorItem
 from app.models.storage import StorageLocation
 from app.schemas.receiving import ReceiveRequest, ReceiveResponse
 from app.core.barcode.parser import BarcodeParser
+from app.models.label_print import LabelPrint
 
 logger = logging.getLogger(__name__)
 
@@ -276,7 +277,13 @@ class ReceivingService:
                 else None
             )
             if vendor_row and vendor_row.requires_relabeling:
-                label_printed = (lot.raw_scan_data or {}).get("label_printed_at")
+                label_printed = (
+                    self.db.query(LabelPrint)
+                    .filter(
+                        LabelPrint.lot_id == lot.lot_id, LabelPrint.voided_at.is_(None)
+                    )
+                    .first()
+                )
                 if not label_printed:
                     raise HTTPException(
                         status_code=status.HTTP_400_BAD_REQUEST,
@@ -335,18 +342,59 @@ class ReceivingService:
             "suggestedLocation": suggested_location_code,
         }
 
-    def mark_label_printed(self, lot_id: int) -> None:
-        """列印內部標籤後在 raw_scan_data 蓋時間戳,作為強制換標的依據。
-        (schema 無獨立欄位,暫存於 JSONB;正式欄位屬第二階段。)"""
-        lot = self.db.query(InventoryLot).filter(InventoryLot.lot_id == lot_id).first()
+    def record_label_print(self, lot_id: int, username: str) -> LabelPrint:
+        lot = (
+            self.db.query(InventoryLot)
+            .filter(InventoryLot.lot_id == lot_id)
+            .with_for_update(of=InventoryLot)
+            .first()
+        )
         if not lot:
-            return
-        lot.raw_scan_data = {
-            **(lot.raw_scan_data or {}),
-            "label_printed_at": utcnow().isoformat(),
-        }
-        lot.updated_at = utcnow()
+            raise ValueError("Lot not found")
+        last = (
+            self.db.query(LabelPrint)
+            .filter(LabelPrint.lot_id == lot_id)
+            .order_by(LabelPrint.print_number.desc())
+            .with_for_update()
+            .first()
+        )
+        record = LabelPrint(
+            lot_id=lot_id,
+            print_number=(last.print_number + 1) if last else 1,
+            printed_by=username,
+            is_reprint=last is not None,
+        )
+        self.db.add(record)
         self.db.commit()
+        self.db.refresh(record)
+        return record
+
+    def list_label_prints(self, lot_id: int) -> list[LabelPrint]:
+        return (
+            self.db.query(LabelPrint)
+            .filter(LabelPrint.lot_id == lot_id)
+            .order_by(LabelPrint.print_number.desc())
+            .all()
+        )
+
+    def void_label_print(
+        self, label_print_id: int, username: str, reason: str
+    ) -> LabelPrint:
+        record = (
+            self.db.query(LabelPrint)
+            .filter(LabelPrint.label_print_id == label_print_id)
+            .with_for_update()
+            .first()
+        )
+        if not record:
+            raise ValueError("Label print not found")
+        if record.voided_at:
+            raise ValueError("Label print is already voided")
+        record.voided_at = utcnow()
+        record.voided_by = username
+        record.void_reason = reason
+        self.db.commit()
+        return record
 
     # ── read helpers used by the receiving API (list / detail / scan) ──────────
     def scan_barcode(self, barcode: str, vendor_id: int):

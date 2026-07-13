@@ -186,7 +186,11 @@ def complete_iqc(
 
 
 @router.post("/print-label")
-def print_label(payload: Dict[str, Any], db: Session = Depends(get_db)):
+def print_label(
+    payload: Dict[str, Any],
+    db: Session = Depends(get_db),
+    current_user: dict = Depends(get_current_user),
+):
     lot_id = payload.get("lot_id")
 
     if not lot_id:
@@ -202,7 +206,7 @@ def print_label(payload: Dict[str, Any], db: Session = Depends(get_db)):
     zpl = printer.render(item)
 
     # 記錄已換標(強制換標流程的前置條件)
-    service.mark_label_printed(lot_id)
+    record = service.record_label_print(lot_id, current_user["username"])
 
     printed = False
 
@@ -213,4 +217,49 @@ def print_label(payload: Dict[str, Any], db: Session = Depends(get_db)):
         except Exception:
             printed = False
 
-    return {"success": True, "zpl": zpl, "printed": printed}
+    return {
+        "success": True,
+        "zpl": zpl,
+        "printed": printed,
+        "labelPrintId": record.label_print_id,
+        "printNumber": record.print_number,
+        "isReprint": record.is_reprint,
+    }
+
+
+@router.get("/{lot_id}/label-prints")
+def list_label_prints(lot_id: int, db: Session = Depends(get_db)):
+    records = ReceivingService(db).list_label_prints(lot_id)
+    return [
+        {
+            "labelPrintId": record.label_print_id,
+            "printNumber": record.print_number,
+            "printedBy": record.printed_by,
+            "printedAt": record.printed_at,
+            "isReprint": record.is_reprint,
+            "voidedAt": record.voided_at,
+            "voidedBy": record.voided_by,
+            "voidReason": record.void_reason,
+        }
+        for record in records
+    ]
+
+
+@router.post("/label-prints/{label_print_id}/void")
+def void_label_print(
+    label_print_id: int,
+    payload: Dict[str, Any],
+    db: Session = Depends(get_db),
+    current_user: dict = Depends(require_role("admin", "supervisor")),
+):
+    reason = str(payload.get("reason") or "").strip()
+    if not reason:
+        raise HTTPException(status_code=400, detail="Void reason is required")
+    try:
+        record = ReceivingService(db).void_label_print(
+            label_print_id, current_user["username"], reason
+        )
+    except ValueError as exc:
+        status = 404 if "not found" in str(exc).lower() else 400
+        raise HTTPException(status_code=status, detail=str(exc)) from exc
+    return {"success": True, "labelPrintId": record.label_print_id}

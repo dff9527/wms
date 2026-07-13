@@ -15,6 +15,7 @@ from app.models.order import (
 # FIX: fix_2 — Add User model import to register users table in Base.metadata
 from app.models.user import User
 from app.models.cycle_count import CycleCount, CycleCountLine
+from app.models.label_print import LabelPrint
 
 __all__ = [
     "Warehouse",
@@ -35,4 +36,5 @@ __all__ = [
     "User",
     "CycleCount",
     "CycleCountLine",
+    "LabelPrint",
 ]
