@@ -1,7 +1,8 @@
 from datetime import date, datetime, time, timedelta
+from math import ceil
 
-from fastapi import APIRouter, Depends
-from sqlalchemy import case, func
+from fastapi import APIRouter, Depends, Query
+from sqlalchemy import case, func, or_
 from sqlalchemy.orm import Session
 
 from app.api.deps import get_db
@@ -12,6 +13,7 @@ from app.schemas.dashboard import (
     InventoryStatusSlice,
     RecentActivityOut,
     TodayReceivingOut,
+    TransactionPageOut,
 )
 
 router = APIRouter(tags=["Dashboard"])
@@ -118,6 +120,22 @@ def inventory_status(db: Session = Depends(get_db)):
     )
 
 
+def _activity_out(
+    transaction: InventoryTransaction, lot: InventoryLot | None
+) -> RecentActivityOut:
+    return RecentActivityOut(
+        id=transaction.transaction_id,
+        type=transaction.transaction_type,
+        lot_id=transaction.lot_id,
+        internal_sku=lot.internal_sku if lot else None,
+        internal_lot_number=lot.internal_lot_number if lot else None,
+        quantity_change=transaction.quantity_change,
+        reference_number=transaction.reference_number,
+        executed_by=transaction.executed_by,
+        executed_at=transaction.executed_at,
+    )
+
+
 @router.get("/recent-activities", response_model=list[RecentActivityOut])
 def recent_activities(db: Session = Depends(get_db)):
     rows = (
@@ -130,17 +148,50 @@ def recent_activities(db: Session = Depends(get_db)):
         .limit(20)
         .all()
     )
-    return [
-        RecentActivityOut(
-            id=transaction.transaction_id,
-            type=transaction.transaction_type,
-            lot_id=transaction.lot_id,
-            internal_sku=lot.internal_sku if lot else None,
-            internal_lot_number=lot.internal_lot_number if lot else None,
-            quantity_change=transaction.quantity_change,
-            reference_number=transaction.reference_number,
-            executed_by=transaction.executed_by,
-            executed_at=transaction.executed_at,
+    return [_activity_out(transaction, lot) for transaction, lot in rows]
+
+
+@router.get("/transactions", response_model=TransactionPageOut)
+def list_transactions(
+    page: int = Query(1, ge=1),
+    page_size: int = Query(20, ge=1, le=100),
+    transaction_type: str | None = Query(None),
+    search: str | None = Query(None),
+    db: Session = Depends(get_db),
+):
+    """稽核/報表用交易分頁查詢(沿用 inventory lots 分頁慣例)。"""
+    query = db.query(InventoryTransaction, InventoryLot).outerjoin(
+        InventoryLot, InventoryTransaction.lot_id == InventoryLot.lot_id
+    )
+    if transaction_type:
+        query = query.filter(
+            InventoryTransaction.transaction_type == transaction_type.upper()
         )
-        for transaction, lot in rows
-    ]
+    if search and search.strip():
+        term = f"%{search.strip()}%"
+        query = query.filter(
+            or_(
+                InventoryLot.internal_sku.ilike(term),
+                InventoryLot.internal_lot_number.ilike(term),
+                InventoryTransaction.reference_number.ilike(term),
+                InventoryTransaction.executed_by.ilike(term),
+            )
+        )
+
+    total = query.count()
+    rows = (
+        query.order_by(
+            InventoryTransaction.executed_at.desc(),
+            InventoryTransaction.transaction_id.desc(),
+        )
+        .offset((page - 1) * page_size)
+        .limit(page_size)
+        .all()
+    )
+    return TransactionPageOut(
+        items=[_activity_out(transaction, lot) for transaction, lot in rows],
+        total=total,
+        page=page,
+        page_size=page_size,
+        total_pages=ceil(total / page_size) if total else 0,
+    )

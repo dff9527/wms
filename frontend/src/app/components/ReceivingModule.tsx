@@ -11,6 +11,7 @@ import {
   Trash2,
 } from 'lucide-react';
 import { toast } from 'sonner';
+import { notifyScanResult } from '../utils/scanFeedback';
 import ReceivingList from './receiving/ReceivingList';
 import ReceivingDetail from './receiving/ReceivingDetail';
 import {
@@ -146,6 +147,7 @@ export default function ReceivingModule() {
       if (!response.success || !response.parsed) {
         setParsedData(null);
         setScanError('無法解析條碼，請確認格式正確');
+        notifyScanResult('error');
         return;
       }
       setParsedData({
@@ -154,11 +156,13 @@ export default function ReceivingModule() {
         lotCode: response.parsed.lotCode,
         dateCode: response.parsed.dateCode,
       });
+      notifyScanResult('success');
       requestAnimationFrame(() => scanInputRef.current?.focus());
     } catch (error) {
       const message = error instanceof Error ? error.message : '掃描失敗，請稍後再試';
       setParsedData(null);
       setScanError(message);
+      notifyScanResult('error');
       toast.error(message);
     }
   };

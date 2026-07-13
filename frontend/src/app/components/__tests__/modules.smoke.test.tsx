@@ -5,6 +5,7 @@
 import { describe, it, expect, vi, beforeEach } from 'vitest';
 import { render, screen, cleanup } from '@testing-library/react';
 import { QueryClient, QueryClientProvider } from '@tanstack/react-query';
+import { MemoryRouter } from 'react-router';
 
 // Mock axios — get/post 一律回 resolved 空資料
 vi.mock('axios', () => ({
@@ -13,6 +14,9 @@ vi.mock('axios', () => ({
       // Special mock for /api/v1/receiving/list endpoint (回特定格式)
       if (url && url.includes('/api/v1/receiving/list')) {
         return Promise.resolve({ data: { items: [], total: 0 } });
+      }
+      if (url && (url.includes('/api/v1/alerts') || url.includes('/api/v1/dashboard/transactions'))) {
+        return Promise.resolve({ data: { items: [], total: 0, page: 1, page_size: 20, total_pages: 0 } });
       }
       return Promise.resolve({ data: [] });
     }),
@@ -30,13 +34,18 @@ import PickingModule from '../PickingModule';
 import TraceabilityModule from '../TraceabilityModule';
 import BarcodeRuleModule from '../BarcodeRuleModule';
 import CustomerModule from '../CustomerModule';
+import ReportsModule from '../ReportsModule';
 
 // Helper to create QueryClient wrapper
 function withQueryClient(ui: React.ReactNode) {
   const queryClient = new QueryClient({
     defaultOptions: { queries: { retry: false } },
   });
-  return <QueryClientProvider client={queryClient}>{ui}</QueryClientProvider>;
+  return (
+    <MemoryRouter>
+      <QueryClientProvider client={queryClient}>{ui}</QueryClientProvider>
+    </MemoryRouter>
+  );
 }
 
 beforeEach(() => {
@@ -74,6 +83,14 @@ describe('Modules smoke test', () => {
     it('render 不拋例外且可找到「銷售訂單」', async () => {
       render(withQueryClient(<PickingModule />));
       const title = await screen.findByText('銷售訂單');
+      expect(title).toBeInTheDocument();
+    });
+  });
+
+  describe('ReportsModule', () => {
+    it('render 不拋例外且可找到「報表中心」', async () => {
+      render(withQueryClient(<ReportsModule />));
+      const title = await screen.findByText('報表中心');
       expect(title).toBeInTheDocument();
     });
   });

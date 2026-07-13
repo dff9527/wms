@@ -15,70 +15,22 @@ import {
   Trash2,
 } from 'lucide-react';
 import { toast } from 'sonner';
+import { notifyScanResult } from '../utils/scanFeedback';
 import type { FifoAllocationSummary, PickWaveTask } from '../types/wms-inventory';
 import AllocationResult from './picking/AllocationResult';
+import CancelOrderDialog from './picking/CancelOrderDialog';
+import CancelTaskDialog from './picking/CancelTaskDialog';
+import CreateSODialog from './picking/CreateSODialog';
+import EditOrderDialog from './picking/EditOrderDialog';
+import {
+  mapSalesOrderItem,
+  type Customer,
+  type Item,
+  type PickWaveTaskWithPicking,
+  type SalesOrderItem,
+} from './picking/types';
 import { printHtml } from '../utils/printWindow';
 import { getRole } from '../api/auth';
-import {
-  Dialog,
-  DialogContent,
-  DialogDescription,
-  DialogFooter,
-  DialogHeader,
-  DialogTitle,
-} from './ui/dialog';
-
-// Customer interface matching CustomerOut (snake_case)
-interface Customer {
-  customer_id: number;
-  customer_code: string;
-  customer_name: string;
-  approved_avl?: any;
-  is_active: boolean;
-}
-
-// Item interface for dropdown
-interface Item {
-  internalSku: string;
-  description: string;
-}
-
-interface SalesOrderItem {
-  soId: number;
-  soNumber: string;
-  customerId: number | null;
-  customer: string;
-  orderDate: string;
-  status: string;
-  totalLines: number;
-  totalQty: number;
-  strategy: string;
-}
-
-// Task extended with picking-specific states
-interface PickWaveTaskWithPicking extends PickWaveTask {
-  pickedQty: number; // The quantity picked by operator (can differ from pickQty)
-  confirmError?: string; // Error message for this task
-  isConfirming: boolean; // Loading state for confirmation
-  isConfirmed: boolean; // Whether this task is confirmed
-}
-
-function mapSalesOrderItem(raw: any): SalesOrderItem {
-  return {
-    soId: Number(raw?.soId ?? raw?.so_id ?? 0),
-    soNumber: raw?.soNumber ?? raw?.so_number ?? '',
-    customerId:
-      raw?.customerId == null && raw?.customer_id == null
-        ? null
-        : Number(raw?.customerId ?? raw?.customer_id ?? 0),
-    customer: raw?.customer ?? raw?.customer_name ?? '',
-    orderDate: raw?.orderDate ?? raw?.order_date ?? '',
-    status: raw?.status ?? '',
-    totalLines: Number(raw?.totalLines ?? raw?.total_lines ?? 0),
-    totalQty: Number(raw?.totalQty ?? raw?.total_qty ?? 0),
-    strategy: raw?.strategy ?? 'FIFO',
-  };
-}
 
 export default function PickingModule() {
   const pickScanRef = useRef<HTMLInputElement>(null);
@@ -794,10 +746,12 @@ export default function PickingModule() {
     );
     if (!task) {
       toast.error('條碼不屬於目前待揀任務，請確認批次');
+      notifyScanResult('error');
       setPickBarcode('');
       requestAnimationFrame(() => pickScanRef.current?.focus());
       return;
     }
+    notifyScanResult('success');
     setPickBarcode('');
     void handleConfirmTask(task).finally(() => pickScanRef.current?.focus());
   };
@@ -1266,367 +1220,57 @@ export default function PickingModule() {
 
       {/* Create SO Dialog */}
       {showCreateDialog && (
-        <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-black/50 backdrop-blur-sm">
-          <div className="bg-white rounded-lg shadow-xl w-full max-w-2xl max-h-[90vh] overflow-y-auto">
-            <div className="p-6 border-b border-slate-200 flex items-center justify-between">
-              <h3 className="text-xl font-semibold text-slate-900">建立銷售訂單</h3>
-              <button
-                type="button"
-                onClick={() => {
-                  setShowCreateDialog(false);
-                }}
-                className="text-slate-400 hover:text-slate-600"
-              >
-                <span className="text-2xl">&times;</span>
-              </button>
-            </div>
-
-            <div className="p-6 space-y-4">
-              {/* Order Number */}
-              <div>
-                <label className="block text-sm font-medium text-slate-700 mb-1">訂單編號 *</label>
-                <input
-                  type="text"
-                  value={soNumber}
-                  onChange={(e) => setSoNumber(e.target.value)}
-                  placeholder="例如: SO-2026-001"
-                  className="w-full px-3 py-2 border border-slate-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-blue-500 outline-none transition-all"
-                  disabled={createLoading}
-                />
-              </div>
-
-              {/* Customer with inline add form */}
-              <div>
-                <label className="block text-sm font-medium text-slate-700 mb-1">客戶</label>
-                <div className="flex gap-2">
-                  <select
-                    value={customerId}
-                    onChange={(e) => setCustomerId(e.target.value ? Number(e.target.value) : '')}
-                    className="flex-1 px-3 py-2 border border-slate-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-blue-500 outline-none transition-all"
-                    disabled={createLoading || showAddCustomerForm}
-                  >
-                    <option value="">請選擇客戶</option>
-                    {customers.map((customer) => (
-                      <option key={customer.customer_id} value={customer.customer_id}>
-                        {customer.customer_name} ({customer.customer_code})
-                      </option>
-                    ))}
-                  </select>
-                  <button
-                    type="button"
-                    onClick={() => {
-                      setShowAddCustomerForm(true);
-                      setAddCustomerError(null);
-                    }}
-                    disabled={createLoading || showAddCustomerForm}
-                    className="px-3 py-2 bg-blue-100 text-blue-700 rounded-lg hover:bg-blue-200 transition-colors shrink-0 flex items-center gap-1 text-sm"
-                    title="新增客戶"
-                  >
-                    <Plus className="size-4" />
-                    新增
-                  </button>
-                </div>
-
-                {/* Inline add customer form */}
-                {showAddCustomerForm && (
-                  <div className="mt-2 p-3 bg-blue-50 rounded-lg border border-blue-200 space-y-2">
-                    <div className="flex items-center justify-between">
-                      <span className="text-xs font-semibold text-blue-700">新增客戶</span>
-                      <button
-                        type="button"
-                        onClick={() => {
-                          setShowAddCustomerForm(false);
-                          setAddCustomerCode('');
-                          setAddCustomerName('');
-                          setAddCustomerError(null);
-                        }}
-                        className="text-slate-400 hover:text-slate-600"
-                      >
-                        <span className="text-lg">&times;</span>
-                      </button>
-                    </div>
-                    {addCustomerError && (
-                      <div className="text-xs text-red-700 bg-red-50 p-2 rounded border border-red-200">
-                        {addCustomerError}
-                      </div>
-                    )}
-                    <div className="grid grid-cols-2 gap-2">
-                      <div>
-                        <label className="block text-xs text-slate-600 mb-0.5">客戶代碼 *</label>
-                        <input
-                          type="text"
-                          value={addCustomerCode}
-                          onChange={(e) => setAddCustomerCode(e.target.value)}
-                          placeholder="例如: C001"
-                          className="w-full px-2 py-1.5 border border-slate-300 rounded text-sm focus:ring-2 focus:ring-blue-500 focus:border-blue-500 outline-none"
-                        />
-                      </div>
-                      <div>
-                        <label className="block text-xs text-slate-600 mb-0.5">客戶名稱 *</label>
-                        <input
-                          type="text"
-                          value={addCustomerName}
-                          onChange={(e) => setAddCustomerName(e.target.value)}
-                          placeholder="例如: 測試客戶"
-                          className="w-full px-2 py-1.5 border border-slate-300 rounded text-sm focus:ring-2 focus:ring-blue-500 focus:border-blue-500 outline-none"
-                        />
-                      </div>
-                    </div>
-                    <button
-                      type="button"
-                      onClick={handleAddCustomer}
-                      disabled={addCustomerLoading}
-                      className="w-full px-3 py-1.5 bg-blue-600 text-white rounded-lg hover:bg-blue-700 transition-colors text-sm disabled:opacity-50 flex items-center justify-center gap-2"
-                    >
-                      {addCustomerLoading ? (
-                        <>
-                          <div className="animate-spin rounded-full h-3 w-3 border-2 border-white border-t-transparent"></div>
-                          建立中...
-                        </>
-                      ) : (
-                        <>
-                          <Plus className="size-3" />
-                          確認新增
-                        </>
-                      )}
-                    </button>
-                  </div>
-                )}
-              </div>
-
-              {/* Strategy */}
-              <div>
-                <label className="block text-sm font-medium text-slate-700 mb-1">配貨策略</label>
-                <select
-                  value={strategy}
-                  onChange={(e) => setStrategy(e.target.value as 'FIFO' | 'FEFO')}
-                  className="w-full px-3 py-2 border border-slate-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-blue-500 outline-none transition-all"
-                  disabled={createLoading}
-                >
-                  <option value="FIFO">FIFO (先進先出)</option>
-                  <option value="FEFO">FEFO (先到期先出)</option>
-                </select>
-              </div>
-
-              {/* Order Lines */}
-              <div>
-                <label className="block text-sm font-medium text-slate-700 mb-2">明細列</label>
-                <div className="space-y-3">
-                  {orderLines.map((line, index) => (
-                    <div key={index} className="flex gap-3 items-start">
-                      {/* SKU Dropdown */}
-                      <div className="flex-1">
-                        <label className="block text-xs font-medium text-slate-500 mb-1">
-                          料號 * {index + 1}
-                        </label>
-                        <select
-                          value={line.internalSku}
-                          onChange={(e) => updateOrderLine(index, 'internalSku', e.target.value)}
-                          className="w-full px-3 py-2 border border-slate-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-blue-500 outline-none transition-all text-sm"
-                          disabled={createLoading}
-                        >
-                          <option value="">請選擇料號</option>
-                          {items.map((item) => (
-                            <option key={item.internalSku} value={item.internalSku}>
-                              {item.internalSku} - {item.description}
-                            </option>
-                          ))}
-                        </select>
-                      </div>
-
-                      {/* Quantity */}
-                      <div className="w-32">
-                        <label className="block text-xs font-medium text-slate-500 mb-1">
-                          數量 *
-                        </label>
-                        <input
-                          type="number"
-                          min="1"
-                          value={line.orderedQty}
-                          onChange={(e) =>
-                            updateOrderLine(index, 'orderedQty', Number(e.target.value))
-                          }
-                          className="w-full px-3 py-2 border border-slate-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-blue-500 outline-none transition-all text-sm"
-                          disabled={createLoading}
-                        />
-                      </div>
-
-                      {/* Remove Button */}
-                      {orderLines.length > 1 && (
-                        <button
-                          type="button"
-                          onClick={() => removeOrderLine(index)}
-                          className="px-2 py-2 text-red-600 hover:bg-red-50 rounded-lg transition-colors shrink-0"
-                          disabled={createLoading}
-                        >
-                          <span className="text-lg">&times;</span>
-                        </button>
-                      )}
-                    </div>
-                  ))}
-                </div>
-
-                <button
-                  type="button"
-                  onClick={addOrderLine}
-                  disabled={createLoading}
-                  className="mt-3 px-3 py-2 bg-slate-100 text-slate-700 rounded-lg hover:bg-slate-200 transition-colors text-sm"
-                >
-                  + 新增明細
-                </button>
-              </div>
-            </div>
-
-            <div className="p-6 border-t border-slate-200 flex items-center justify-end gap-3 bg-slate-50 rounded-b-lg">
-              <button
-                type="button"
-                onClick={() => {
-                  setShowCreateDialog(false);
-                }}
-                disabled={createLoading}
-                className="px-4 py-2 border border-slate-300 text-slate-700 rounded-lg hover:bg-slate-100 transition-colors"
-              >
-                取消
-              </button>
-              <button
-                type="button"
-                onClick={handleCreateSO}
-                disabled={createLoading}
-                className="px-4 py-2 bg-blue-600 text-white rounded-lg hover:bg-blue-700 transition-colors disabled:opacity-50 flex items-center gap-2"
-              >
-                {createLoading ? (
-                  <>
-                    <div className="animate-spin rounded-full h-4 w-4 border-2 border-white border-t-transparent"></div>
-                    建立中...
-                  </>
-                ) : (
-                  <>
-                    <Plus className="size-4" />
-                    建立訂單
-                  </>
-                )}
-              </button>
-            </div>
-          </div>
-        </div>
+        <CreateSODialog
+          soNumber={soNumber}
+          setSoNumber={setSoNumber}
+          customerId={customerId}
+          setCustomerId={setCustomerId}
+          strategy={strategy}
+          setStrategy={setStrategy}
+          orderLines={orderLines}
+          customers={customers}
+          items={items}
+          createLoading={createLoading}
+          showAddCustomerForm={showAddCustomerForm}
+          setShowAddCustomerForm={setShowAddCustomerForm}
+          addCustomerCode={addCustomerCode}
+          setAddCustomerCode={setAddCustomerCode}
+          addCustomerName={addCustomerName}
+          setAddCustomerName={setAddCustomerName}
+          addCustomerLoading={addCustomerLoading}
+          addCustomerError={addCustomerError}
+          setAddCustomerError={setAddCustomerError}
+          onClose={() => setShowCreateDialog(false)}
+          onAddCustomer={handleAddCustomer}
+          onCreateSO={handleCreateSO}
+          onAddOrderLine={addOrderLine}
+          onRemoveOrderLine={removeOrderLine}
+          onUpdateOrderLine={updateOrderLine}
+        />
       )}
 
-      <Dialog open={!!editOrder} onOpenChange={(open) => !open && setEditOrder(null)}>
-        <DialogContent>
-          <DialogHeader>
-            <DialogTitle>編輯銷售訂單</DialogTitle>
-            <DialogDescription>更新客戶與配貨策略。</DialogDescription>
-          </DialogHeader>
-          <div className="space-y-4">
-            <div>
-              <label className="mb-1 block text-sm font-medium text-slate-700">客戶</label>
-              <select
-                value={editOrderCustomerId}
-                onChange={(e) => setEditOrderCustomerId(e.target.value ? Number(e.target.value) : '')}
-                className="w-full rounded-lg border border-slate-300 px-3 py-2 text-sm outline-none transition-all focus:border-blue-500 focus:ring-2 focus:ring-blue-500"
-              >
-                <option value="">請選擇客戶</option>
-                {customers.map((customer) => (
-                  <option key={customer.customer_id} value={customer.customer_id}>
-                    {customer.customer_name} ({customer.customer_code})
-                  </option>
-                ))}
-              </select>
-            </div>
-            <div>
-              <label className="mb-1 block text-sm font-medium text-slate-700">配貨策略</label>
-              <select
-                value={editOrderStrategy}
-                onChange={(e) => setEditOrderStrategy(e.target.value as 'FIFO' | 'FEFO')}
-                disabled={String(editOrder?.status).toUpperCase() !== 'OPEN'}
-                className="w-full rounded-lg border border-slate-300 px-3 py-2 text-sm outline-none transition-all focus:border-blue-500 focus:ring-2 focus:ring-blue-500 disabled:bg-slate-100 disabled:text-slate-500"
-              >
-                <option value="FIFO">FIFO (先進先出)</option>
-                <option value="FEFO">FEFO (先到期先出)</option>
-              </select>
-              {String(editOrder?.status).toUpperCase() !== 'OPEN' && (
-                <p className="mt-1 text-xs text-slate-500">只有 OPEN 訂單可修改策略。</p>
-              )}
-            </div>
-          </div>
-          <DialogFooter>
-            <button
-              type="button"
-              onClick={() => setEditOrder(null)}
-              className="px-4 py-2 border border-slate-300 text-slate-700 rounded-lg hover:bg-slate-100 transition-colors"
-            >
-              取消
-            </button>
-            <button
-              type="button"
-              onClick={handleUpdateOrder}
-              className="px-4 py-2 bg-blue-600 text-white rounded-lg hover:bg-blue-700 transition-colors"
-            >
-              儲存
-            </button>
-          </DialogFooter>
-        </DialogContent>
-      </Dialog>
+      <EditOrderDialog
+        editOrder={editOrder}
+        setEditOrder={setEditOrder}
+        editOrderCustomerId={editOrderCustomerId}
+        setEditOrderCustomerId={setEditOrderCustomerId}
+        editOrderStrategy={editOrderStrategy}
+        setEditOrderStrategy={setEditOrderStrategy}
+        customers={customers}
+        onUpdateOrder={handleUpdateOrder}
+      />
 
-      <Dialog open={!!cancelOrder} onOpenChange={(open) => !open && setCancelOrder(null)}>
-        <DialogContent>
-          <DialogHeader>
-            <DialogTitle>作廢銷售訂單</DialogTitle>
-            <DialogDescription>
-              確定要作廢「{cancelOrder?.soNumber}」嗎？此操作會將訂單狀態改為已取消。
-            </DialogDescription>
-          </DialogHeader>
-          <DialogFooter>
-            <button
-              type="button"
-              onClick={() => setCancelOrder(null)}
-              className="px-4 py-2 border border-slate-300 text-slate-700 rounded-lg hover:bg-slate-100 transition-colors"
-            >
-              取消
-            </button>
-            <button
-              type="button"
-              onClick={handleCancelOrder}
-              className="px-4 py-2 bg-red-600 text-white rounded-lg hover:bg-red-700 transition-colors"
-            >
-              <span className="inline-flex items-center gap-2">
-                <Trash2 className="size-4" />
-                確認作廢
-              </span>
-            </button>
-          </DialogFooter>
-        </DialogContent>
-      </Dialog>
+      <CancelOrderDialog
+        cancelOrder={cancelOrder}
+        setCancelOrder={setCancelOrder}
+        onCancelOrder={handleCancelOrder}
+      />
 
-      <Dialog open={!!cancelTask} onOpenChange={(open) => !open && setCancelTask(null)}>
-        <DialogContent>
-          <DialogHeader>
-            <DialogTitle>取消揀貨任務</DialogTitle>
-            <DialogDescription>
-              確定要取消任務 #{cancelTask?.taskId} 嗎？此操作僅限管理員。
-            </DialogDescription>
-          </DialogHeader>
-          <DialogFooter>
-            <button
-              type="button"
-              onClick={() => setCancelTask(null)}
-              className="px-4 py-2 border border-slate-300 text-slate-700 rounded-lg hover:bg-slate-100 transition-colors"
-            >
-              取消
-            </button>
-            <button
-              type="button"
-              onClick={handleCancelTask}
-              className="px-4 py-2 bg-red-600 text-white rounded-lg hover:bg-red-700 transition-colors"
-            >
-              <span className="inline-flex items-center gap-2">
-                <Trash2 className="size-4" />
-                確認取消
-              </span>
-            </button>
-          </DialogFooter>
-        </DialogContent>
-      </Dialog>
+      <CancelTaskDialog
+        cancelTask={cancelTask}
+        setCancelTask={setCancelTask}
+        onCancelTask={handleCancelTask}
+      />
     </div>
   );
 }

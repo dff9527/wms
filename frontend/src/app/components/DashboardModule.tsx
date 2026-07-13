@@ -22,12 +22,14 @@ import {
 } from 'lucide-react';
 import axios from 'axios';
 import { useQuery } from '@tanstack/react-query';
+import { Link } from 'react-router';
 import {
   useDailyTrend,
   useInventoryStatusSummary,
   useRecentActivities,
   useTodayReceiving,
 } from '../api/dashboard';
+import { useAlerts } from '../api/alerts';
 
 export default function DashboardModule() {
   // --- Data Fetching ---
@@ -54,6 +56,15 @@ export default function DashboardModule() {
     isLoading: isActivitiesLoading,
     isError: isActivitiesError,
   } = useRecentActivities();
+  const {
+    data: alertsData,
+    isLoading: isAlertsLoading,
+    isError: isAlertsError,
+  } = useAlerts(30);
+  const alerts = alertsData?.items ?? [];
+  const criticalCount = alerts.filter((a) => a.severity === 'critical').length;
+  const warningCount = alerts.filter((a) => a.severity === 'warning').length;
+  const topAlerts = alerts.slice(0, 5);
 
   // Compute inventory stats from the aggregate endpoint
   const totalQtyOnHand = inventoryStatus?.totalQuantity ?? 0;
@@ -127,14 +138,16 @@ export default function DashboardModule() {
     isShipmentsLoading &&
     isTodayReceivingLoading &&
     isTrendLoading &&
-    isActivitiesLoading;
+    isActivitiesLoading &&
+    isAlertsLoading;
   const hasAnyError =
     isLotsError ||
     isPicksError ||
     isShipmentsError ||
     isTodayReceivingError ||
     isTrendError ||
-    isActivitiesError;
+    isActivitiesError ||
+    isAlertsError;
 
   // FIX: [fix_2] — Add explicit type annotation to statsData array to resolve TS2353 union property errors
   const statsData: Array<{
@@ -239,6 +252,66 @@ export default function DashboardModule() {
             </div>
           </div>
         ))}
+      </div>
+
+      {/* Alerts */}
+      <div className="grid grid-cols-1 gap-4 lg:grid-cols-3">
+        <div className="rounded-lg border border-slate-200 bg-white p-5">
+          <p className="text-sm text-slate-600">風險告警</p>
+          <p className="mt-2 text-3xl font-bold text-slate-900">
+            {(alertsData?.total ?? 0).toLocaleString()}
+          </p>
+          <p className="mt-2 text-sm text-slate-500">
+            嚴重 {criticalCount} · 警告 {warningCount}
+          </p>
+          <Link
+            to="/reports"
+            className="mt-4 inline-flex text-sm font-medium text-blue-600 hover:underline"
+          >
+            前往報表中心
+          </Link>
+        </div>
+        <div className="rounded-lg border border-slate-200 bg-white p-5 lg:col-span-2">
+          <div className="mb-3 flex items-center justify-between">
+            <h3 className="text-lg font-semibold text-slate-900">告警摘要</h3>
+            <span className="text-xs text-slate-400">近 30 天到期視窗</span>
+          </div>
+          {topAlerts.length === 0 ? (
+            <p className="py-6 text-center text-sm italic text-slate-400">目前無告警</p>
+          ) : (
+            <ul className="divide-y divide-slate-100">
+              {topAlerts.map((alert, idx) => (
+                <li
+                  key={`${alert.type}-${alert.internalSku}-${alert.lotId ?? idx}`}
+                  className="flex items-start justify-between gap-3 py-2.5 text-sm"
+                >
+                  <div className="min-w-0">
+                    <p className="font-medium text-slate-900">
+                      {alert.internalSku}
+                      <span className="ml-2 font-normal text-slate-500">{alert.message}</span>
+                    </p>
+                    <p className="truncate text-xs text-slate-400">
+                      {alert.type}
+                      {alert.dueDate ? ` · 到期 ${alert.dueDate}` : ''}
+                      {alert.currentQty != null
+                        ? ` · 現有 ${alert.currentQty}/${alert.thresholdQty}`
+                        : ''}
+                    </p>
+                  </div>
+                  <span
+                    className={`shrink-0 rounded px-2 py-0.5 text-xs font-medium ${
+                      alert.severity === 'critical'
+                        ? 'bg-red-100 text-red-700'
+                        : 'bg-amber-100 text-amber-700'
+                    }`}
+                  >
+                    {alert.severity === 'critical' ? '嚴重' : '警告'}
+                  </span>
+                </li>
+              ))}
+            </ul>
+          )}
+        </div>
       </div>
 
       {/* Charts */}

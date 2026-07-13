@@ -35,3 +35,11 @@ class RecentActivityOut(BaseModel):
     reference_number: str | None
     executed_by: str
     executed_at: datetime
+
+
+class TransactionPageOut(BaseModel):
+    items: list[RecentActivityOut]
+    total: int
+    page: int
+    page_size: int
+    total_pages: int

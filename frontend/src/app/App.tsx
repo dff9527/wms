@@ -13,6 +13,7 @@ import {
   Building2,
   Users,
   ClipboardCheck,
+  FileText,
 } from 'lucide-react';
 import {
   Link,
@@ -33,6 +34,7 @@ import BarcodeRuleModule from './components/BarcodeRuleModule';
 import UserAdminModule from './components/UserAdminModule';
 import CustomerModule from './components/CustomerModule';
 import CycleCountModule from './components/CycleCountModule';
+import ReportsModule from './components/ReportsModule';
 import {
   Sidebar,
   SidebarContent,
@@ -58,6 +60,7 @@ import {
   getRole,
 } from './api/auth';
 import { Toaster } from './components/ui/sonner';
+import ScanFlashOverlay from './components/common/ScanFlashOverlay';
 
 function TraceRoute() {
   const [searchParams, setSearchParams] = useSearchParams();
@@ -226,6 +229,7 @@ export default function App() {
           </div>
         </div>
         <Toaster />
+        <ScanFlashOverlay />
       </>
     );
   }
@@ -249,6 +253,7 @@ export default function App() {
         { path: '/dashboard', label: '總覽', icon: BarChart3 },
         { path: '/inventory', label: '庫存管理', icon: Warehouse },
         { path: '/trace', label: '追溯管理', icon: Search },
+        { path: '/reports', label: '報表中心', icon: FileText },
       ],
     },
     {
@@ -336,6 +341,7 @@ export default function App() {
               <Route path="/picking" element={<PickingModule />} />
               <Route path="/cycle-counts" element={<CycleCountModule />} />
               <Route path="/trace" element={<TraceRoute />} />
+              <Route path="/reports" element={<ReportsModule />} />
               <Route path="/barcode-rules" element={<BarcodeRuleModule />} />
               <Route path="/customers" element={<CustomerModule />} />
               <Route
@@ -352,6 +358,7 @@ export default function App() {
         <ChangePasswordDialog open={showPwDialog} onClose={() => setShowPwDialog(false)} />
       </SidebarProvider>
       <Toaster />
+      <ScanFlashOverlay />
     </>
   );
 }
