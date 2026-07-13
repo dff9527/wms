@@ -31,6 +31,7 @@ from app.models.item import Item
 from app.models.vendor import Vendor, VendorItem
 from app.models.order import SalesOrder, SOLine, PickTask, PurchaseOrder, POLine
 from app.models.inventory import InventoryLot, InventoryTransaction
+from app.models.label_print import LabelPrint
 from app.models.user import User
 from app.core.security import hash_password
 
@@ -117,6 +118,10 @@ def cleanup_test_data():
                 db.query(InventoryTransaction).filter(
                     InventoryTransaction.lot_id.in_(all_lot_ids)
                 ).delete(synchronize_session=False)
+                # label_prints references lots (M5) — must delete before lots
+                db.query(LabelPrint).filter(LabelPrint.lot_id.in_(all_lot_ids)).delete(
+                    synchronize_session=False
+                )
                 db.query(InventoryLot).filter(
                     InventoryLot.lot_id.in_(all_lot_ids)
                 ).delete(synchronize_session=False)
