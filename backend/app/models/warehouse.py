@@ -50,6 +50,11 @@ class StorageLocation(Base):
     allowed_item_types: Mapped[list[str] | None] = mapped_column(ARRAY(Text))
     is_quarantine: Mapped[bool] = mapped_column(Boolean, default=False)
     barcode: Mapped[str | None] = mapped_column(String(50))
+    replenishment_sku: Mapped[str | None] = mapped_column(
+        ForeignKey("items.internal_sku")
+    )
+    replenishment_min_qty: Mapped[int] = mapped_column(Integer, default=0)
+    replenishment_max_qty: Mapped[int] = mapped_column(Integer, default=0)
     created_at: Mapped[datetime] = mapped_column(DateTime, server_default=func.now())
 
 
