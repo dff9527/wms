@@ -19,3 +19,9 @@ class CustomerCreate(BaseModel):
     customer_name: str = Field(..., max_length=255)
     approved_avl: Optional[Any] = None
     is_active: bool = True
+
+
+class CustomerUpdate(BaseModel):
+    customer_name: Optional[str] = Field(None, max_length=255)
+    approved_avl: Optional[Any] = None
+    is_active: Optional[bool] = None

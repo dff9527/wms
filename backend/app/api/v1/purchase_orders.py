@@ -1,15 +1,38 @@
 from datetime import date
-from typing import List
 
-from fastapi import APIRouter, Depends, HTTPException
+from fastapi import APIRouter, Depends, HTTPException, Query
 from sqlalchemy.orm import Session
 
-from app.api.deps import get_db, get_current_user
+from app.api.deps import get_db, get_current_user, require_role
 from app.models.order import PurchaseOrder, POLine
 from app.models.vendor import Vendor
 from app.models.item import Item
 
 router = APIRouter(prefix="/api/v1/purchase-orders", tags=["purchase-orders"])
+
+
+def _po_response(po: PurchaseOrder, vendor_name: str, lines: list) -> dict:
+    return {
+        "poId": po.po_id,
+        "poNumber": po.po_number,
+        "vendorId": po.vendor_id,
+        "vendorName": vendor_name,
+        "poDate": po.po_date.isoformat() if po.po_date else "",
+        "expectedDeliveryDate": (
+            po.expected_delivery_date.isoformat() if po.expected_delivery_date else ""
+        ),
+        "status": po.status,
+        "lines": [
+            {
+                "lineNumber": line.line_number,
+                "internalSku": line.internal_sku or "",
+                "vendorPn": line.vendor_pn or "",
+                "orderedQty": line.ordered_qty,
+                "receivedQty": line.received_qty,
+            }
+            for line in lines
+        ],
+    }
 
 
 @router.get("/open-po-list")
@@ -27,12 +50,15 @@ def list_open_po_numbers(db: Session = Depends(get_db)):
 
 @router.get("")
 def list_po(
+    include_cancelled: bool = Query(False),
     db: Session = Depends(get_db),
 ):
     """最近 100 筆 PO，每筆包含 lines."""
+    q = db.query(PurchaseOrder)
+    if not include_cancelled:
+        q = q.filter(PurchaseOrder.status != "CANCELLED")
     pos = (
-        db.query(PurchaseOrder)
-        .order_by(PurchaseOrder.po_date.desc(), PurchaseOrder.po_id.desc())
+        q.order_by(PurchaseOrder.po_date.desc(), PurchaseOrder.po_id.desc())
         .limit(100)
         .all()
     )
@@ -52,23 +78,9 @@ def list_po(
             lines_by_po.setdefault(line.po_id, []).append(line)
 
     return [
-        {
-            "poNumber": po.po_number,
-            "vendorId": po.vendor_id,
-            "vendorName": vendor_map.get(po.vendor_id, ""),
-            "poDate": po.po_date.isoformat() if po.po_date else "",
-            "status": po.status,
-            "lines": [
-                {
-                    "lineNumber": line.line_number,
-                    "internalSku": line.internal_sku or "",
-                    "vendorPn": line.vendor_pn or "",
-                    "orderedQty": line.ordered_qty,
-                    "receivedQty": line.received_qty,
-                }
-                for line in lines_by_po.get(po.po_id, [])
-            ],
-        }
+        _po_response(
+            po, vendor_map.get(po.vendor_id, ""), lines_by_po.get(po.po_id, [])
+        )
         for po in pos
     ]
 
@@ -162,23 +174,73 @@ def create_po(
     vendor_name = vendor.vendor_name
     po_lines = db.query(POLine).filter(POLine.po_id == po.po_id).all()
 
-    return {
-        "poNumber": po.po_number,
-        "vendorId": po.vendor_id,
-        "vendorName": vendor_name,
-        "poDate": po.po_date.isoformat() if po.po_date else "",
-        "status": po.status,
-        "lines": [
-            {
-                "lineNumber": line.line_number,
-                "internalSku": line.internal_sku or "",
-                "vendorPn": line.vendor_pn or "",
-                "orderedQty": line.ordered_qty,
-                "receivedQty": line.received_qty,
-            }
-            for line in po_lines
-        ],
-    }
+    return _po_response(po, vendor_name, po_lines)
+
+
+@router.patch("/{po_id}")
+def update_po(
+    po_id: int,
+    payload: dict,
+    db: Session = Depends(get_db),
+    _current_user: dict = Depends(require_role("admin")),
+):
+    """
+    Edit PO header fields (vendor / expected delivery date).
+    Lines with received_qty > 0 are not editable (header-only for demo).
+    """
+    po = db.query(PurchaseOrder).filter(PurchaseOrder.po_id == po_id).first()
+    if not po:
+        raise HTTPException(status_code=404, detail="Purchase order not found")
+    if po.status == "CANCELLED":
+        raise HTTPException(status_code=400, detail="Cannot edit a cancelled PO")
+
+    if "vendorId" in payload and payload["vendorId"] is not None:
+        vendor = (
+            db.query(Vendor).filter(Vendor.vendor_id == payload["vendorId"]).first()
+        )
+        if not vendor:
+            raise HTTPException(
+                status_code=400, detail=f"Vendor ID {payload['vendorId']} not found"
+            )
+        po.vendor_id = payload["vendorId"]
+
+    if "expectedDeliveryDate" in payload:
+        raw = payload["expectedDeliveryDate"]
+        if raw in (None, ""):
+            po.expected_delivery_date = None
+        else:
+            try:
+                po.expected_delivery_date = date.fromisoformat(str(raw)[:10])
+            except ValueError as exc:
+                raise HTTPException(
+                    status_code=400, detail="Invalid expectedDeliveryDate"
+                ) from exc
+
+    db.commit()
+    vendor_name = ""
+    if po.vendor_id:
+        vendor = db.query(Vendor).filter(Vendor.vendor_id == po.vendor_id).first()
+        vendor_name = vendor.vendor_name if vendor else ""
+    po_lines = db.query(POLine).filter(POLine.po_id == po.po_id).all()
+    return _po_response(po, vendor_name, po_lines)
+
+
+@router.post("/{po_id}/cancel")
+def cancel_po(
+    po_id: int,
+    db: Session = Depends(get_db),
+    _current_user: dict = Depends(require_role("admin")),
+):
+    """Soft-cancel a PO (status = CANCELLED)."""
+    po = db.query(PurchaseOrder).filter(PurchaseOrder.po_id == po_id).first()
+    if not po:
+        raise HTTPException(status_code=404, detail="Purchase order not found")
+    if po.status == "CANCELLED":
+        return {"detail": "already cancelled", "poId": po.po_id, "status": po.status}
+
+    po.status = "CANCELLED"
+    db.commit()
+    return {"detail": "cancelled", "poId": po.po_id, "status": po.status}
 
 
 # 独立 router: GET /api/v1/items for dropdown (SO/PO form item selector)

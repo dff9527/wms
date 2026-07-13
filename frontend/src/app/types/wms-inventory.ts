@@ -29,7 +29,15 @@ export interface ReceivingListRow extends WmsLotIdentifiers {
 
 /** ─── 庫存 Lot 列表 ─── */
 
-export type InventoryLotRowStatus = 'available' | 'reserved' | 'expiring_soon' | 'quarantine';
+export type InventoryLotRowStatus =
+  | 'available'
+  | 'reserved'
+  | 'expiring_soon'
+  | 'quarantine'
+  | 'qc_hold'
+  | 'expired'
+  | 'shipped'
+  | 'void';
 
 export interface InventoryLotRow extends WmsLotIdentifiers {
   id: number;

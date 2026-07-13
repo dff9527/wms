@@ -11,10 +11,22 @@ import {
   Play,
   XCircle,
   Printer,
+  Pencil,
+  Trash2,
 } from 'lucide-react';
+import { toast } from 'sonner';
 import type { FifoAllocationSummary, PickWaveTask } from '../types/wms-inventory';
 import AllocationResult from './picking/AllocationResult';
 import { printHtml } from '../utils/printWindow';
+import { getRole } from '../api/auth';
+import {
+  Dialog,
+  DialogContent,
+  DialogDescription,
+  DialogFooter,
+  DialogHeader,
+  DialogTitle,
+} from './ui/dialog';
 
 // Customer interface matching CustomerOut (snake_case)
 interface Customer {
@@ -32,7 +44,9 @@ interface Item {
 }
 
 interface SalesOrderItem {
+  soId: number;
   soNumber: string;
+  customerId: number | null;
   customer: string;
   orderDate: string;
   status: string;
@@ -49,7 +63,25 @@ interface PickWaveTaskWithPicking extends PickWaveTask {
   isConfirmed: boolean; // Whether this task is confirmed
 }
 
+function mapSalesOrderItem(raw: any): SalesOrderItem {
+  return {
+    soId: Number(raw?.soId ?? raw?.so_id ?? 0),
+    soNumber: raw?.soNumber ?? raw?.so_number ?? '',
+    customerId:
+      raw?.customerId == null && raw?.customer_id == null
+        ? null
+        : Number(raw?.customerId ?? raw?.customer_id ?? 0),
+    customer: raw?.customer ?? raw?.customer_name ?? '',
+    orderDate: raw?.orderDate ?? raw?.order_date ?? '',
+    status: raw?.status ?? '',
+    totalLines: Number(raw?.totalLines ?? raw?.total_lines ?? 0),
+    totalQty: Number(raw?.totalQty ?? raw?.total_qty ?? 0),
+    strategy: raw?.strategy ?? 'FIFO',
+  };
+}
+
 export default function PickingModule() {
+  const isAdmin = getRole() === 'admin';
   const [allocation, setAllocation] = useState<FifoAllocationSummary | null>(null);
   const [pickWave, setPickWave] = useState<PickWaveTask[]>([]);
   const [pickWaveWithPicking, setPickWaveWithPicking] = useState<PickWaveTaskWithPicking[]>([]);
@@ -57,8 +89,6 @@ export default function PickingModule() {
   const [error, setError] = useState<string | null>(null);
   const [selectedSo, setSelectedSo] = useState<string | null>(null);
   const [confirmLoading, setConfirmLoading] = useState(false);
-  const [confirmError, setConfirmError] = useState<string | null>(null);
-  const [confirmSuccess, setConfirmSuccess] = useState<string | null>(null);
 
   // New state for packing list
   const [packingList, setPackingList] = useState<{
@@ -79,12 +109,16 @@ export default function PickingModule() {
   const [isPickingMode, setIsPickingMode] = useState(false);
 
   const [salesOrders, setSalesOrders] = useState<SalesOrderItem[]>([]);
+  const [showCancelledOrders, setShowCancelledOrders] = useState(false);
+  const [editOrder, setEditOrder] = useState<SalesOrderItem | null>(null);
+  const [editOrderCustomerId, setEditOrderCustomerId] = useState<number | ''>('');
+  const [editOrderStrategy, setEditOrderStrategy] = useState<'FIFO' | 'FEFO'>('FIFO');
+  const [cancelOrder, setCancelOrder] = useState<SalesOrderItem | null>(null);
+  const [cancelTask, setCancelTask] = useState<PickWaveTask | null>(null);
 
   // State for "Create SO" dialog
   const [showCreateDialog, setShowCreateDialog] = useState(false);
   const [createLoading, setCreateLoading] = useState(false);
-  const [createError, setCreateError] = useState<string | null>(null);
-  const [createSuccess, setCreateSuccess] = useState<string | null>(null);
 
   // Form state
   const [soNumber, setSoNumber] = useState('');
@@ -107,10 +141,14 @@ export default function PickingModule() {
 
   const fetchSalesOrders = async () => {
     try {
-      const response = await axios.get('/api/v1/picking/orders');
-      setSalesOrders(Array.isArray(response.data) ? response.data : []);
+      const response = await axios.get('/api/v1/picking/orders', {
+        params: { include_cancelled: showCancelledOrders || undefined },
+      });
+      const items = Array.isArray(response.data) ? response.data : response.data?.items ?? [];
+      setSalesOrders(items.map(mapSalesOrderItem));
     } catch (err) {
       console.error('Failed to fetch sales orders', err);
+      toast.error('載入銷售訂單失敗');
     }
   };
 
@@ -133,7 +171,9 @@ export default function PickingModule() {
       await fetchSalesOrders();
       await fetchPickWave();
     } catch (err: any) {
-      setError(err.response?.data?.detail || 'Allocation failed');
+      const message = err.response?.data?.detail || '配貨失敗';
+      setError(message);
+      toast.error(Array.isArray(message) ? message.join(', ') : String(message));
     } finally {
       setLoading(false);
     }
@@ -186,8 +226,10 @@ export default function PickingModule() {
       setIsPickingMode(false);
       await fetchPickWave();
       await fetchSalesOrders();
+      toast.success('出貨確認成功');
     } catch (err: any) {
-      setConfirmError(err.response?.data?.detail || '確認出貨失敗');
+      const message = err.response?.data?.detail || '確認出貨失敗';
+      toast.error(Array.isArray(message) ? message.join(', ') : String(message));
     }
   };
 
@@ -264,9 +306,10 @@ export default function PickingModule() {
     setConfirmLoading(true);
     try {
       await fetchPickWave();
-      setConfirmSuccess('波次已重新整理');
+      toast.success('波次已重新整理');
     } catch (err: any) {
-      setConfirmError(err.response?.data?.detail || '刷新波次失敗');
+      const message = err.response?.data?.detail || '刷新波次失敗';
+      toast.error(Array.isArray(message) ? message.join(', ') : String(message));
     } finally {
       setConfirmLoading(false);
     }
@@ -418,7 +461,7 @@ export default function PickingModule() {
   useEffect(() => {
     fetchSalesOrders();
     fetchPickWave();
-  }, []);
+  }, [showCancelledOrders]);
 
   // Fetch customers and items for dropdowns
   useEffect(() => {
@@ -495,17 +538,72 @@ export default function PickingModule() {
     }
   };
 
+  const openEditOrderDialog = (order: SalesOrderItem) => {
+    setEditOrder(order);
+    setEditOrderCustomerId(order.customerId ?? '');
+    setEditOrderStrategy(String(order.strategy).toUpperCase() === 'FEFO' ? 'FEFO' : 'FIFO');
+  };
+
+  const handleUpdateOrder = async () => {
+    if (!editOrder) return;
+    if (!editOrderCustomerId) {
+      toast.error('請選擇客戶');
+      return;
+    }
+    try {
+      await axios.patch(`/api/v1/picking/orders/${editOrder.soId}`, {
+        customerId: Number(editOrderCustomerId),
+        ...(String(editOrder.status).toUpperCase() === 'OPEN' ? { strategy: editOrderStrategy } : {}),
+      });
+      toast.success('銷售訂單已更新');
+      setEditOrder(null);
+      await fetchSalesOrders();
+    } catch (err: any) {
+      const message = err.response?.data?.detail || '更新銷售訂單失敗';
+      toast.error(Array.isArray(message) ? message.join(', ') : String(message));
+    }
+  };
+
+  const handleCancelOrder = async () => {
+    if (!cancelOrder) return;
+    try {
+      await axios.post(`/api/v1/picking/orders/${cancelOrder.soId}/cancel`);
+      toast.success(`訂單 ${cancelOrder.soNumber} 已作廢`);
+      if (selectedSo === cancelOrder.soNumber) {
+        setSelectedSo(null);
+        setAllocation(null);
+      }
+      setCancelOrder(null);
+      await fetchSalesOrders();
+      await fetchPickWave();
+    } catch (err: any) {
+      const message = err.response?.data?.detail || '作廢銷售訂單失敗';
+      toast.error(Array.isArray(message) ? message.join(', ') : String(message));
+    }
+  };
+
+  const handleCancelTask = async () => {
+    if (!cancelTask) return;
+    try {
+      await axios.post(`/api/v1/picking/tasks/${cancelTask.taskId}/cancel`);
+      toast.success(`任務 #${cancelTask.taskId} 已取消`);
+      setCancelTask(null);
+      await fetchPickWave();
+    } catch (err: any) {
+      const message = err.response?.data?.detail || '取消任務失敗';
+      toast.error(Array.isArray(message) ? message.join(', ') : String(message));
+    }
+  };
+
   // Handle Create SO dialog
   const handleCreateSO = async () => {
     setCreateLoading(true);
-    setCreateError(null);
-    setCreateSuccess(null);
 
     try {
       const lines = orderLines.filter((line) => line.internalSku && line.orderedQty > 0);
 
       if (lines.length === 0) {
-        setCreateError('請至少新增一筆明細');
+        toast.error('請至少新增一筆明細');
         setCreateLoading(false);
         return;
       }
@@ -520,7 +618,7 @@ export default function PickingModule() {
         })),
       });
 
-      setCreateSuccess('訂單建立成功！');
+      toast.success('訂單建立成功');
       setSoNumber('');
       setCustomerId('');
       setStrategy('FIFO');
@@ -531,7 +629,7 @@ export default function PickingModule() {
       await fetchSalesOrders();
     } catch (err: any) {
       const detail = err.response?.data?.detail || '建立訂單失敗';
-      setCreateError(Array.isArray(detail) ? detail.join(', ') : detail);
+      toast.error(Array.isArray(detail) ? detail.join(', ') : String(detail));
     } finally {
       setCreateLoading(false);
     }
@@ -584,6 +682,7 @@ export default function PickingModule() {
     const Icon = config.icon;
     return (
       <span
+        title={status || undefined}
         className={`inline-flex items-center gap-1 px-2 py-1 rounded text-xs font-medium ${config.className}`}
       >
         <Icon className="size-3" />
@@ -722,7 +821,21 @@ export default function PickingModule() {
           {task.receiveDate}
         </div>
       </td>
-      <td className="py-3 px-3 text-center">{getStatusBadge(task.status)}</td>
+      <td className="py-3 px-3 text-center">
+        <div className="flex items-center justify-center gap-2">
+          {getStatusBadge(task.status)}
+          {isAdmin && String(task.status).toUpperCase() !== 'CANCELLED' && (
+            <button
+              type="button"
+              className="inline-flex items-center gap-1 rounded px-2 py-1 text-xs font-medium text-red-600 hover:bg-red-50 hover:text-red-700"
+              onClick={() => setCancelTask(task)}
+            >
+              <Trash2 className="size-3" />
+              取消
+            </button>
+          )}
+        </div>
+      </td>
     </tr>
   );
 
@@ -734,18 +847,27 @@ export default function PickingModule() {
             <h2 className="text-xl font-semibold text-slate-900">銷售訂單</h2>
             <p className="text-sm text-slate-500 mt-1">等待配貨與揀貨的訂單</p>
           </div>
-          <button
-            type="button"
-            onClick={() => {
-              setShowCreateDialog(true);
-              setCreateError(null);
-              setCreateSuccess(null);
-            }}
-            className="flex items-center gap-2 px-4 py-2 bg-blue-600 text-white rounded-lg hover:bg-blue-700 transition-colors"
-          >
-            <Plus className="size-4" />
-            新增訂單
-          </button>
+          <div className="flex items-center gap-4">
+            <label className="flex items-center gap-2 text-sm text-slate-600">
+              <input
+                type="checkbox"
+                checked={showCancelledOrders}
+                onChange={(e) => setShowCancelledOrders(e.target.checked)}
+                className="rounded border-slate-300"
+              />
+              顯示已作廢
+            </label>
+            <button
+              type="button"
+              onClick={() => {
+                setShowCreateDialog(true);
+              }}
+              className="flex items-center gap-2 px-4 py-2 bg-blue-600 text-white rounded-lg hover:bg-blue-700 transition-colors"
+            >
+              <Plus className="size-4" />
+              新增訂單
+            </button>
+          </div>
         </div>
 
         {salesOrders.length === 0 && (
@@ -757,6 +879,7 @@ export default function PickingModule() {
             <div
               key={order.soNumber}
               onClick={() => {
+                if (String(order.status).toUpperCase() === 'CANCELLED') return;
                 setSelectedSo(order.soNumber);
                 handleAllocate(order.soNumber);
               }}
@@ -764,6 +887,7 @@ export default function PickingModule() {
               tabIndex={0}
               onKeyDown={(e) => {
                 if (e.key === 'Enter') {
+                  if (String(order.status).toUpperCase() === 'CANCELLED') return;
                   setSelectedSo(order.soNumber);
                   handleAllocate(order.soNumber);
                 }
@@ -771,10 +895,40 @@ export default function PickingModule() {
               className={`border border-slate-200 rounded-lg p-4 hover:shadow-md transition-shadow cursor-pointer ${selectedSo === order.soNumber ? 'ring-2 ring-blue-500' : ''}`}
             >
               <div className="flex items-center justify-between mb-3">
-                <span className="text-sm font-mono font-semibold text-slate-900">
-                  {order.soNumber}
-                </span>
-                {getStatusBadge(order.status)}
+                <div className="flex items-center gap-2">
+                  <span className="text-sm font-mono font-semibold text-slate-900">
+                    {order.soNumber}
+                  </span>
+                  {getStatusBadge(order.status)}
+                </div>
+                {isAdmin && (
+                  <div className="flex items-center gap-1">
+                    <button
+                      type="button"
+                      onClick={(e) => {
+                        e.stopPropagation();
+                        openEditOrderDialog(order);
+                      }}
+                      className="rounded p-1 text-blue-600 hover:bg-blue-50 hover:text-blue-700"
+                      aria-label={`編輯 ${order.soNumber}`}
+                    >
+                      <Pencil className="size-4" />
+                    </button>
+                    {String(order.status).toUpperCase() !== 'CANCELLED' && (
+                      <button
+                        type="button"
+                        onClick={(e) => {
+                          e.stopPropagation();
+                          setCancelOrder(order);
+                        }}
+                        className="rounded p-1 text-red-600 hover:bg-red-50 hover:text-red-700"
+                        aria-label={`作廢 ${order.soNumber}`}
+                      >
+                        <Trash2 className="size-4" />
+                      </button>
+                    )}
+                  </div>
+                )}
               </div>
               <div className="space-y-2 text-sm">
                 <div className="flex justify-between">
@@ -848,16 +1002,6 @@ export default function PickingModule() {
                   {confirmLoading ? '刷新中...' : '刷新波次'}
                 </button>
               </div>
-              {confirmSuccess && (
-                <div className="mt-2 bg-green-50 text-green-700 p-3 rounded-lg border border-green-200 text-sm">
-                  {confirmSuccess}
-                </div>
-              )}
-              {confirmError && (
-                <div className="mt-2 bg-red-50 text-red-700 p-3 rounded-lg border border-red-200 text-sm">
-                  {confirmError}
-                </div>
-              )}
             </div>
           </>
         ) : (
@@ -1080,8 +1224,6 @@ export default function PickingModule() {
                 type="button"
                 onClick={() => {
                   setShowCreateDialog(false);
-                  setCreateError(null);
-                  setCreateSuccess(null);
                 }}
                 className="text-slate-400 hover:text-slate-600"
               >
@@ -1090,18 +1232,6 @@ export default function PickingModule() {
             </div>
 
             <div className="p-6 space-y-4">
-              {/* Error/Success messages */}
-              {createError && (
-                <div className="bg-red-50 text-red-700 p-3 rounded-lg border border-red-200 text-sm">
-                  {createError}
-                </div>
-              )}
-              {createSuccess && (
-                <div className="bg-green-50 text-green-700 p-3 rounded-lg border border-green-200 text-sm">
-                  {createSuccess}
-                </div>
-              )}
-
               {/* Order Number */}
               <div>
                 <label className="block text-sm font-medium text-slate-700 mb-1">訂單編號 *</label>
@@ -1302,8 +1432,6 @@ export default function PickingModule() {
                 type="button"
                 onClick={() => {
                   setShowCreateDialog(false);
-                  setCreateError(null);
-                  setCreateSuccess(null);
                 }}
                 disabled={createLoading}
                 className="px-4 py-2 border border-slate-300 text-slate-700 rounded-lg hover:bg-slate-100 transition-colors"
@@ -1332,6 +1460,123 @@ export default function PickingModule() {
           </div>
         </div>
       )}
+
+      <Dialog open={!!editOrder} onOpenChange={(open) => !open && setEditOrder(null)}>
+        <DialogContent>
+          <DialogHeader>
+            <DialogTitle>編輯銷售訂單</DialogTitle>
+            <DialogDescription>更新客戶與配貨策略。</DialogDescription>
+          </DialogHeader>
+          <div className="space-y-4">
+            <div>
+              <label className="mb-1 block text-sm font-medium text-slate-700">客戶</label>
+              <select
+                value={editOrderCustomerId}
+                onChange={(e) => setEditOrderCustomerId(e.target.value ? Number(e.target.value) : '')}
+                className="w-full rounded-lg border border-slate-300 px-3 py-2 text-sm outline-none transition-all focus:border-blue-500 focus:ring-2 focus:ring-blue-500"
+              >
+                <option value="">請選擇客戶</option>
+                {customers.map((customer) => (
+                  <option key={customer.customer_id} value={customer.customer_id}>
+                    {customer.customer_name} ({customer.customer_code})
+                  </option>
+                ))}
+              </select>
+            </div>
+            <div>
+              <label className="mb-1 block text-sm font-medium text-slate-700">配貨策略</label>
+              <select
+                value={editOrderStrategy}
+                onChange={(e) => setEditOrderStrategy(e.target.value as 'FIFO' | 'FEFO')}
+                disabled={String(editOrder?.status).toUpperCase() !== 'OPEN'}
+                className="w-full rounded-lg border border-slate-300 px-3 py-2 text-sm outline-none transition-all focus:border-blue-500 focus:ring-2 focus:ring-blue-500 disabled:bg-slate-100 disabled:text-slate-500"
+              >
+                <option value="FIFO">FIFO (先進先出)</option>
+                <option value="FEFO">FEFO (先到期先出)</option>
+              </select>
+              {String(editOrder?.status).toUpperCase() !== 'OPEN' && (
+                <p className="mt-1 text-xs text-slate-500">只有 OPEN 訂單可修改策略。</p>
+              )}
+            </div>
+          </div>
+          <DialogFooter>
+            <button
+              type="button"
+              onClick={() => setEditOrder(null)}
+              className="px-4 py-2 border border-slate-300 text-slate-700 rounded-lg hover:bg-slate-100 transition-colors"
+            >
+              取消
+            </button>
+            <button
+              type="button"
+              onClick={handleUpdateOrder}
+              className="px-4 py-2 bg-blue-600 text-white rounded-lg hover:bg-blue-700 transition-colors"
+            >
+              儲存
+            </button>
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
+
+      <Dialog open={!!cancelOrder} onOpenChange={(open) => !open && setCancelOrder(null)}>
+        <DialogContent>
+          <DialogHeader>
+            <DialogTitle>作廢銷售訂單</DialogTitle>
+            <DialogDescription>
+              確定要作廢「{cancelOrder?.soNumber}」嗎？此操作會將訂單狀態改為已取消。
+            </DialogDescription>
+          </DialogHeader>
+          <DialogFooter>
+            <button
+              type="button"
+              onClick={() => setCancelOrder(null)}
+              className="px-4 py-2 border border-slate-300 text-slate-700 rounded-lg hover:bg-slate-100 transition-colors"
+            >
+              取消
+            </button>
+            <button
+              type="button"
+              onClick={handleCancelOrder}
+              className="px-4 py-2 bg-red-600 text-white rounded-lg hover:bg-red-700 transition-colors"
+            >
+              <span className="inline-flex items-center gap-2">
+                <Trash2 className="size-4" />
+                確認作廢
+              </span>
+            </button>
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
+
+      <Dialog open={!!cancelTask} onOpenChange={(open) => !open && setCancelTask(null)}>
+        <DialogContent>
+          <DialogHeader>
+            <DialogTitle>取消揀貨任務</DialogTitle>
+            <DialogDescription>
+              確定要取消任務 #{cancelTask?.taskId} 嗎？此操作僅限管理員。
+            </DialogDescription>
+          </DialogHeader>
+          <DialogFooter>
+            <button
+              type="button"
+              onClick={() => setCancelTask(null)}
+              className="px-4 py-2 border border-slate-300 text-slate-700 rounded-lg hover:bg-slate-100 transition-colors"
+            >
+              取消
+            </button>
+            <button
+              type="button"
+              onClick={handleCancelTask}
+              className="px-4 py-2 bg-red-600 text-white rounded-lg hover:bg-red-700 transition-colors"
+            >
+              <span className="inline-flex items-center gap-2">
+                <Trash2 className="size-4" />
+                確認取消
+              </span>
+            </button>
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
     </div>
   );
 }

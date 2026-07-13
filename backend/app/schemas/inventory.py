@@ -1,6 +1,6 @@
 from pydantic import BaseModel, Field
 from typing import Optional, List
-from datetime import date, datetime
+from datetime import date
 
 
 class LotOut(BaseModel):
@@ -20,6 +20,7 @@ class LotOut(BaseModel):
     iqc_result: Optional[str]
     manufacture_date: Optional[date]
     expiry_date: Optional[date]
+    quality_notes: Optional[str] = None
 
     class Config:
         from_attributes = True
@@ -34,10 +35,10 @@ class LotListQuery(BaseModel):
     vendor: Optional[int] = None
 
     def get_excluded_statuses(self) -> List[str]:
-        """Default excludes SHIPPED and EXPIRED unless explicitly requested."""
+        """Default excludes SHIPPED, EXPIRED, VOID unless explicitly requested."""
         if self.status:
             return []  # User specified statuses, don't filter out anything implicitly
-        return ["SHIPPED", "EXPIRED"]
+        return ["SHIPPED", "EXPIRED", "VOID"]
 
 
 class AdjustRequest(BaseModel):
@@ -58,6 +59,16 @@ class SplitRequest(BaseModel):
     parentLotId: int = Field(..., alias="parent_lot_id")
     quantityToSplit: int = Field(..., alias="quantity_to_split")
     executedBy: str = Field(default="SYSTEM", alias="executed_by")
+
+    class Config:
+        populate_by_name = True
+
+
+class LotUpdateRequest(BaseModel):
+    """Update non-quantity lot fields (location / quality notes)."""
+
+    locationCode: Optional[str] = Field(None, alias="location_code")
+    qualityNotes: Optional[str] = Field(None, alias="quality_notes")
 
     class Config:
         populate_by_name = True

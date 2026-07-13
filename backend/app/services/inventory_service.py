@@ -1,6 +1,5 @@
 from typing import List, Optional
 from sqlalchemy.orm import Session
-from sqlalchemy import and_, or_
 
 from app.core.warehouse.adjustment import AdjustmentService
 from app.schemas.inventory import LotOut, LotListQuery
@@ -15,7 +14,7 @@ class InventoryService:
 
     def get_lots(self, query_params: LotListQuery) -> List[LotOut]:
         """
-        Query lots with filters. Default excludes SHIPPED/EXPIRED.
+        Query lots with filters. Default excludes SHIPPED/EXPIRED/VOID.
         """
         excluded_statuses = query_params.get_excluded_statuses()
 
@@ -75,6 +74,63 @@ class InventoryService:
         out = LotOut.model_validate(lot)
         out.location_code = loc_code
         return out
+
+    def update_lot(
+        self,
+        lot_id: int,
+        location_code: Optional[str] = None,
+        quality_notes: Optional[str] = None,
+        fields_set: Optional[dict] = None,
+    ) -> LotOut:
+        """Update non-quantity lot fields."""
+        lot = self.db.query(InventoryLot).filter(InventoryLot.lot_id == lot_id).first()
+        if not lot:
+            raise ValueError(f"Lot {lot_id} not found")
+        if lot.lot_status == "VOID":
+            raise ValueError("Cannot edit a voided lot")
+
+        fields_set = fields_set or {}
+
+        if "locationCode" in fields_set or "location_code" in fields_set:
+            code = location_code
+            if code in (None, ""):
+                lot.location_id = None
+            else:
+                loc = (
+                    self.db.query(StorageLocation)
+                    .filter(StorageLocation.location_code == code)
+                    .first()
+                )
+                if not loc:
+                    raise ValueError(f"Location '{code}' not found")
+                lot.location_id = loc.location_id
+
+        if "qualityNotes" in fields_set or "quality_notes" in fields_set:
+            lot.quality_notes = quality_notes
+
+        self.db.commit()
+        detail = self.get_lot_detail(lot_id)
+        if not detail:
+            raise ValueError(f"Lot {lot_id} not found")
+        return detail
+
+    def void_lot(self, lot_id: int) -> dict:
+        """Soft-void a lot (status only; no qty reversal)."""
+        lot = self.db.query(InventoryLot).filter(InventoryLot.lot_id == lot_id).first()
+        if not lot:
+            raise ValueError(f"Lot {lot_id} not found")
+        if lot.lot_status == "VOID":
+            return {
+                "detail": "already voided",
+                "lotId": lot.lot_id,
+                "lotStatus": "VOID",
+            }
+        if lot.lot_status == "SHIPPED":
+            raise ValueError("Cannot void a shipped lot")
+
+        lot.lot_status = "VOID"
+        self.db.commit()
+        return {"detail": "voided", "lotId": lot.lot_id, "lotStatus": "VOID"}
 
     def adjust_quantity(self, request_data: dict, executed_by: str) -> dict:
         """Delegate adjustment to AdjustmentService."""

@@ -1,18 +1,17 @@
 from datetime import date
-from fastapi import APIRouter, Depends, HTTPException
+from fastapi import APIRouter, Depends, HTTPException, Query
 from sqlalchemy.orm import Session
-from typing import Optional, List
+from typing import Optional
 
 from app.core.warehouse.picking import PickingEngine, InsufficientInventoryError
 from app.schemas.picking import (
     AllocateRequest,
     AllocateResponse,
-    PickWaveTaskOut,
     ConfirmPickRequest,
     ConfirmPickResponse,
 )
-from app.api.deps import get_db, get_current_user
-from app.models.order import SalesOrder, SOLine
+from app.api.deps import get_db, get_current_user, require_role
+from app.models.order import SalesOrder, SOLine, PickTask
 from app.models.customer import Customer
 from app.models.item import Item
 
@@ -67,6 +66,20 @@ def confirm_pick(
 
 
 VALID_STRATEGIES = {"FIFO", "FEFO"}
+
+
+def _so_response(so: SalesOrder, customer_name: str, lines: list) -> dict:
+    return {
+        "soId": so.so_id,
+        "soNumber": so.so_number,
+        "customerId": so.customer_id,
+        "customer": customer_name,
+        "orderDate": so.order_date.isoformat() if so.order_date else "",
+        "status": so.status,
+        "totalLines": len(lines),
+        "totalQty": sum(l.ordered_qty for l in lines),
+        "strategy": so.lot_selection_rule or "FIFO",
+    }
 
 
 @router.post("/orders", status_code=201)
@@ -165,37 +178,28 @@ def create_so(
 
     db.commit()
 
-    # Fetch created SO with customer info and lines
-    customer_map = {}
+    customer_name = ""
     if so.customer_id:
         customer = (
             db.query(Customer).filter(Customer.customer_id == so.customer_id).first()
         )
-        customer_map[so.customer_id] = customer.customer_name if customer else ""
+        customer_name = customer.customer_name if customer else ""
 
     so_lines = db.query(SOLine).filter(SOLine.so_id == so.so_id).all()
-    total_qty = sum(l.ordered_qty for l in so_lines)
-
-    return {
-        "soNumber": so.so_number,
-        "customer": customer_map.get(so.customer_id, ""),
-        "orderDate": so.order_date.isoformat() if so.order_date else "",
-        "status": so.status,
-        "totalLines": len(so_lines),
-        "totalQty": total_qty,
-        "strategy": so.lot_selection_rule or "FIFO",
-    }
+    return _so_response(so, customer_name, so_lines)
 
 
 @router.get("/orders")
-def list_orders(db: Session = Depends(get_db)):
+def list_orders(
+    include_cancelled: bool = Query(False),
+    db: Session = Depends(get_db),
+):
     """銷售訂單清單(揀貨頁卡片用),最近 100 筆。"""
-    from app.models.order import SalesOrder, SOLine
-    from app.models.customer import Customer
-
+    q = db.query(SalesOrder)
+    if not include_cancelled:
+        q = q.filter(SalesOrder.status != "CANCELLED")
     sos = (
-        db.query(SalesOrder)
-        .order_by(SalesOrder.order_date.desc(), SalesOrder.so_id.desc())
+        q.order_by(SalesOrder.order_date.desc(), SalesOrder.so_id.desc())
         .limit(100)
         .all()
     )
@@ -215,24 +219,102 @@ def list_orders(db: Session = Depends(get_db)):
             lines_by_so.setdefault(line.so_id, []).append(line)
 
     return [
-        {
-            "soNumber": so.so_number,
-            "customer": cmap.get(so.customer_id, ""),
-            "orderDate": so.order_date.isoformat() if so.order_date else "",
-            "status": so.status,
-            "totalLines": len(lines_by_so.get(so.so_id, [])),
-            "totalQty": sum(l.ordered_qty for l in lines_by_so.get(so.so_id, [])),
-            "strategy": so.lot_selection_rule or "FIFO",
-        }
+        _so_response(so, cmap.get(so.customer_id, ""), lines_by_so.get(so.so_id, []))
         for so in sos
     ]
 
 
-@router.get("/tasks")
-def list_tasks(db: Session = Depends(get_db)):
-    from app.models.order import PickTask
+@router.patch("/orders/{so_id}")
+def update_so(
+    so_id: int,
+    payload: dict,
+    db: Session = Depends(get_db),
+    _current_user: dict = Depends(require_role("admin")),
+):
+    """
+    Edit SO header (customer / strategy). Does not change line quantities.
+    Demo: status-only cancel elsewhere; no allocation release here.
+    """
+    so = db.query(SalesOrder).filter(SalesOrder.so_id == so_id).first()
+    if not so:
+        raise HTTPException(status_code=404, detail="Sales order not found")
+    if so.status in ("CANCELLED", "SHIPPED", "CLOSED"):
+        raise HTTPException(
+            status_code=400, detail=f"Cannot edit SO in status {so.status}"
+        )
 
-    tasks = db.query(PickTask).all()
+    if "customerId" in payload:
+        customer_id = payload["customerId"]
+        if customer_id is not None:
+            customer = (
+                db.query(Customer).filter(Customer.customer_id == customer_id).first()
+            )
+            if not customer:
+                raise HTTPException(
+                    status_code=400, detail=f"Customer ID {customer_id} not found"
+                )
+        so.customer_id = customer_id
+
+    if "strategy" in payload and payload["strategy"] is not None:
+        strategy = payload["strategy"]
+        if strategy not in VALID_STRATEGIES:
+            raise HTTPException(
+                status_code=400,
+                detail=f"Invalid strategy '{strategy}'. Must be one of: {', '.join(VALID_STRATEGIES)}",
+            )
+        # Only allow strategy change while still OPEN (before allocation)
+        if so.status != "OPEN" and strategy != so.lot_selection_rule:
+            raise HTTPException(
+                status_code=400,
+                detail="Strategy can only be changed while SO is OPEN",
+            )
+        so.lot_selection_rule = strategy
+
+    db.commit()
+    customer_name = ""
+    if so.customer_id:
+        customer = (
+            db.query(Customer).filter(Customer.customer_id == so.customer_id).first()
+        )
+        customer_name = customer.customer_name if customer else ""
+    so_lines = db.query(SOLine).filter(SOLine.so_id == so.so_id).all()
+    return _so_response(so, customer_name, so_lines)
+
+
+@router.post("/orders/{so_id}/cancel")
+def cancel_so(
+    so_id: int,
+    db: Session = Depends(get_db),
+    _current_user: dict = Depends(require_role("admin")),
+):
+    """
+    Soft-cancel SO (status = CANCELLED).
+    Demo: status-only; does not release allocations / reverse inventory.
+    """
+    so = db.query(SalesOrder).filter(SalesOrder.so_id == so_id).first()
+    if not so:
+        raise HTTPException(status_code=404, detail="Sales order not found")
+    if so.status == "CANCELLED":
+        return {"detail": "already cancelled", "soId": so.so_id, "status": so.status}
+    if so.status in ("SHIPPED", "CLOSED"):
+        raise HTTPException(
+            status_code=400, detail=f"Cannot cancel SO in status {so.status}"
+        )
+
+    so.status = "CANCELLED"
+    db.commit()
+    return {"detail": "cancelled", "soId": so.so_id, "status": so.status}
+
+
+@router.get("/tasks")
+def list_tasks(
+    include_cancelled: bool = Query(False),
+    db: Session = Depends(get_db),
+):
+    q = db.query(PickTask)
+    if not include_cancelled:
+        q = q.filter(PickTask.status != "CANCELLED")
+    tasks = q.all()
     return [
         {
             "task_id": t.task_id,
@@ -244,3 +326,32 @@ def list_tasks(db: Session = Depends(get_db)):
         }
         for t in tasks
     ]
+
+
+@router.post("/tasks/{task_id}/cancel")
+def cancel_task(
+    task_id: int,
+    db: Session = Depends(get_db),
+    _current_user: dict = Depends(require_role("admin")),
+):
+    """
+    Soft-cancel pick task (status = CANCELLED).
+    Demo: status-only; does not reverse inventory for PICKED tasks.
+    """
+    task = db.query(PickTask).filter(PickTask.task_id == task_id).first()
+    if not task:
+        raise HTTPException(status_code=404, detail="Pick task not found")
+    if task.status == "CANCELLED":
+        return {
+            "detail": "already cancelled",
+            "task_id": task.task_id,
+            "status": task.status,
+        }
+    if task.status == "CONFIRMED":
+        raise HTTPException(
+            status_code=400, detail="Cannot cancel a confirmed pick task"
+        )
+
+    task.status = "CANCELLED"
+    db.commit()
+    return {"detail": "cancelled", "task_id": task.task_id, "status": task.status}

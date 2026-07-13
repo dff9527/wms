@@ -4,7 +4,13 @@ from typing import List, Optional
 
 from app.api.deps import get_db, require_role
 from app.services.inventory_service import InventoryService
-from app.schemas.inventory import LotOut, LotListQuery, AdjustRequest, SplitRequest
+from app.schemas.inventory import (
+    LotOut,
+    LotListQuery,
+    AdjustRequest,
+    SplitRequest,
+    LotUpdateRequest,
+)
 
 # main.py mounts this under prefix="/api/v1/inventory"; do not add a second prefix here
 router = APIRouter(tags=["Inventory"])
@@ -32,6 +38,51 @@ def get_lot_detail(lot_id: int, db: Session = Depends(get_db)):
     if not lot:
         raise HTTPException(status_code=404, detail="Lot not found")
     return lot
+
+
+@router.patch("/lots/{lot_id}", response_model=LotOut)
+def update_lot(
+    lot_id: int,
+    request: LotUpdateRequest,
+    db: Session = Depends(get_db),
+    _current_user: dict = Depends(require_role("admin")),
+):
+    """Update non-quantity fields (location / quality notes)."""
+    service = InventoryService(db)
+    try:
+        lot = service.update_lot(
+            lot_id,
+            location_code=request.locationCode,
+            quality_notes=request.qualityNotes,
+            fields_set=request.model_dump(exclude_unset=True, by_alias=False),
+        )
+    except ValueError as e:
+        msg = str(e)
+        if "not found" in msg.lower():
+            raise HTTPException(status_code=404, detail=msg)
+        raise HTTPException(status_code=400, detail=msg)
+    return lot
+
+
+@router.post("/lots/{lot_id}/void")
+def void_lot(
+    lot_id: int,
+    db: Session = Depends(get_db),
+    _current_user: dict = Depends(require_role("admin")),
+):
+    """
+    Soft-void a lot (lot_status = VOID).
+    Demo: status-only; does not write inventory_transaction / reverse qty.
+    """
+    service = InventoryService(db)
+    try:
+        result = service.void_lot(lot_id)
+    except ValueError as e:
+        msg = str(e)
+        if "not found" in msg.lower():
+            raise HTTPException(status_code=404, detail=msg)
+        raise HTTPException(status_code=400, detail=msg)
+    return result
 
 
 @router.post("/adjust")

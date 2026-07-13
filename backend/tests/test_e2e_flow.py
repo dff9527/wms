@@ -181,8 +181,9 @@ def seed_master_data():
                     approval_status="APPROVED",
                 )
             )
-        # Seed e2e-admin user for JWT authentication
-        if not db.query(User).filter(User.username == "e2e-admin").first():
+        # Seed e2e-admin user for JWT authentication (always ensure admin role)
+        e2e_admin = db.query(User).filter(User.username == "e2e-admin").first()
+        if not e2e_admin:
             db.add(
                 User(
                     username="e2e-admin",
@@ -191,6 +192,10 @@ def seed_master_data():
                     is_active=True,
                 )
             )
+        elif e2e_admin.role != "admin" or not e2e_admin.is_active:
+            # Prior runs may have left a non-admin row; restore expected role for e2e.
+            e2e_admin.role = "admin"
+            e2e_admin.is_active = True
         db.commit()
 
         ts = datetime.now().strftime("%Y%m%d%H%M%S")
@@ -691,6 +696,7 @@ def main():
                 if not verify_password("e2e-op-pw1", existing_op.password_hash):
                     # Password was changed by previous test run, reset it
                     existing_op.password_hash = hash_password("e2e-op-pw1")
+                existing_op.role = "operator"
                 existing_op.is_active = True
                 db.commit()
                 check(
@@ -826,7 +832,8 @@ def main():
     response = client.get("/api/v1/purchase-orders/items")
     assert response.status_code == 200
     items = response.json()
-    test_sku = items[0]["internalSku"] if items else SKU
+    # Use the TI SKU/PN so the later receive-against-PO step can match the TI barcode.
+    test_sku = SKU
 
     # Test 1: Create new PO successfully
     response = client.post(
@@ -835,7 +842,7 @@ def main():
             "poNumber": test_po_number,
             "vendorId": test_vendor_id,
             "lines": [
-                {"internalSku": test_sku, "vendorPn": "TEST-PN-E2E", "orderedQty": 50}
+                {"internalSku": test_sku, "vendorPn": VENDOR_PN, "orderedQty": 100000}
             ],
         },
     )
@@ -933,15 +940,15 @@ def main():
             "/api/v1/receiving/receive",
             json={
                 "po_number": test_po_number,
-                "barcode": scan_result["vendorPn"] + scan_result["lotCode"],
+                "barcode": TI_BARCODE,
                 "vendor_id": test_vendor_id,
-                "qty": scan_result.get("qty", 100),
+                "qty": min(int(scan_result.get("qty") or 100), 100),
             },
         )
         check(
             "POST /receiving/receive using new PO 200",
             response.status_code == 200,
-            f"status={response.status_code}",
+            f"status={response.status_code} body={response.text[:200]}",
         )
 
     # Step 15: Change own password (自助改密碼)

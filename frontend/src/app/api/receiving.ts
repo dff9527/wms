@@ -159,10 +159,12 @@ export async function printLabel(lotId: number): Promise<{
 // ==================== Purchase Order APIs ====================
 
 export interface POItem {
+  poId: number;
   poNumber: string;
   vendorId: number;
   vendorName: string;
   poDate: string;
+  expectedDeliveryDate?: string | null;
   status: string;
   lines: Array<{
     lineNumber: number;
@@ -173,9 +175,54 @@ export interface POItem {
   }>;
 }
 
-export async function listPOs(): Promise<POItem[]> {
-  const response = await axios.get<{ items?: POItem[] }>(`${API_BASE_URL}/api/v1/purchase-orders`);
-  return Array.isArray(response.data) ? response.data : response.data.items || [];
+function normalizePOItem(raw: any): POItem {
+  return {
+    poId: Number(raw?.poId ?? raw?.po_id ?? 0),
+    poNumber: raw?.poNumber ?? raw?.po_number ?? '',
+    vendorId: Number(raw?.vendorId ?? raw?.vendor_id ?? 0),
+    vendorName: raw?.vendorName ?? raw?.vendor_name ?? '',
+    poDate: raw?.poDate ?? raw?.po_date ?? '',
+    expectedDeliveryDate: raw?.expectedDeliveryDate ?? raw?.expected_delivery_date ?? null,
+    status: raw?.status ?? '',
+    lines: Array.isArray(raw?.lines)
+      ? raw.lines.map((line: any) => ({
+          lineNumber: Number(line?.lineNumber ?? line?.line_number ?? 0),
+          internalSku: line?.internalSku ?? line?.internal_sku ?? '',
+          vendorPn: line?.vendorPn ?? line?.vendor_pn ?? '',
+          orderedQty: Number(line?.orderedQty ?? line?.ordered_qty ?? 0),
+          receivedQty: Number(line?.receivedQty ?? line?.received_qty ?? 0),
+        }))
+      : [],
+  };
+}
+
+export async function listPOs(includeCancelled = false): Promise<POItem[]> {
+  const response = await axios.get<{ items?: unknown[] } | unknown[]>(
+    `${API_BASE_URL}/api/v1/purchase-orders`,
+    {
+      params: {
+        include_cancelled: includeCancelled || undefined,
+      },
+    }
+  );
+  const items = Array.isArray(response.data) ? response.data : response.data.items || [];
+  return items.map(normalizePOItem);
+}
+
+export async function updatePO(
+  poId: number,
+  payload: { vendorId?: number; expectedDeliveryDate?: string | null }
+): Promise<POItem> {
+  const response = await axios.patch(
+    `${API_BASE_URL}/api/v1/purchase-orders/${poId}`,
+    payload
+  );
+  return normalizePOItem(response.data);
+}
+
+export async function cancelPO(poId: number): Promise<{ success?: boolean; status?: string }> {
+  const response = await axios.post(`${API_BASE_URL}/api/v1/purchase-orders/${poId}/cancel`);
+  return response.data;
 }
 
 export interface ItemOption {

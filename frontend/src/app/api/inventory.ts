@@ -63,6 +63,23 @@ export async function splitLot(payload: { parentLotId: number; quantityToSplit: 
   return response.data;
 }
 
+export async function updateLot(payload: {
+  lotId: number;
+  locationCode?: string;
+  qualityNotes?: string;
+}) {
+  const response = await axios.patch(`${API_BASE_URL}/lots/${payload.lotId}`, {
+    locationCode: payload.locationCode,
+    qualityNotes: payload.qualityNotes,
+  });
+  return response.data;
+}
+
+export async function voidLot(lotId: number) {
+  const response = await axios.post(`${API_BASE_URL}/lots/${lotId}/void`);
+  return response.data;
+}
+
 // React Query Hooks
 
 export function useInventoryLots(params?: Parameters<typeof getInventoryLots>[0]) {
@@ -88,6 +105,28 @@ export function useSplitLotMutation() {
 
   return useMutation({
     mutationFn: (payload: Parameters<typeof splitLot>[0]) => splitLot(payload),
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ['inventory-lots'] });
+    },
+  });
+}
+
+export function useUpdateLotMutation() {
+  const queryClient = useQueryClient();
+
+  return useMutation({
+    mutationFn: (payload: Parameters<typeof updateLot>[0]) => updateLot(payload),
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ['inventory-lots'] });
+    },
+  });
+}
+
+export function useVoidLotMutation() {
+  const queryClient = useQueryClient();
+
+  return useMutation({
+    mutationFn: (lotId: number) => voidLot(lotId),
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: ['inventory-lots'] });
     },

@@ -11,6 +11,8 @@ import {
   listItems,
   createPO,
   listOpenPOs,
+  updatePO,
+  cancelPO,
 } from '../api/receiving';
 
 export function useReceivingList(params?: { poNumber?: string; status?: string }) {
@@ -69,10 +71,10 @@ export function useVendors() {
   });
 }
 
-export function usePOs() {
+export function usePOs(includeCancelled = false) {
   return useQuery({
-    queryKey: ['purchase-orders'],
-    queryFn: () => listPOs(),
+    queryKey: ['purchase-orders', includeCancelled],
+    queryFn: () => listPOs(includeCancelled),
   });
 }
 
@@ -94,6 +96,29 @@ export function useCreatePO() {
   const qc = useQueryClient();
   return useMutation({
     mutationFn: createPO,
+    onSuccess: () => {
+      qc.invalidateQueries({ queryKey: ['purchase-orders'] });
+      qc.invalidateQueries({ queryKey: ['open-po-list'] });
+    },
+  });
+}
+
+export function useUpdatePO() {
+  const qc = useQueryClient();
+  return useMutation({
+    mutationFn: ({ poId, payload }: { poId: number; payload: { vendorId?: number; expectedDeliveryDate?: string | null } }) =>
+      updatePO(poId, payload),
+    onSuccess: () => {
+      qc.invalidateQueries({ queryKey: ['purchase-orders'] });
+      qc.invalidateQueries({ queryKey: ['open-po-list'] });
+    },
+  });
+}
+
+export function useCancelPO() {
+  const qc = useQueryClient();
+  return useMutation({
+    mutationFn: (poId: number) => cancelPO(poId),
     onSuccess: () => {
       qc.invalidateQueries({ queryKey: ['purchase-orders'] });
       qc.invalidateQueries({ queryKey: ['open-po-list'] });
