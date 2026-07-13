@@ -1,7 +1,14 @@
 import { useState, useEffect } from 'react';
 import axios from 'axios';
-import { Plus, CheckCircle, XCircle, Pencil, Trash2 } from 'lucide-react';
+import { Plus, CheckCircle, XCircle, Pencil, Trash2, ListChecks } from 'lucide-react';
 import { getRole } from '../api/auth';
+import { getVendors, type Vendor } from '../api/barcodes';
+import {
+  listCustomers,
+  parseApprovedVendorIds,
+  updateCustomer,
+  type Customer,
+} from '../api/customers';
 import { toast } from 'sonner';
 import {
   Dialog,
@@ -12,14 +19,6 @@ import {
   DialogTitle,
 } from './ui/dialog';
 import { Button } from './ui/button';
-
-interface Customer {
-  customer_id: number;
-  customer_code: string;
-  customer_name: string;
-  approved_avl?: unknown;
-  is_active: boolean;
-}
 
 export default function CustomerModule() {
   const [customers, setCustomers] = useState<Customer[]>([]);
@@ -38,14 +37,18 @@ export default function CustomerModule() {
   const [deleteTarget, setDeleteTarget] = useState<Customer | null>(null);
   const [deleteLoading, setDeleteLoading] = useState(false);
 
+  const [avlTarget, setAvlTarget] = useState<Customer | null>(null);
+  const [vendors, setVendors] = useState<Vendor[]>([]);
+  const [selectedVendorIds, setSelectedVendorIds] = useState<number[]>([]);
+  const [avlLoading, setAvlLoading] = useState(false);
+  const [avlSaving, setAvlSaving] = useState(false);
+
   const isAdmin = getRole() === 'admin';
 
   const fetchCustomers = async () => {
     try {
-      const response = await axios.get('/api/v1/customers/', {
-        params: { include_inactive: showInactive || undefined },
-      });
-      setCustomers(response.data);
+      const data = await listCustomers(showInactive);
+      setCustomers(data);
     } catch (err) {
       console.error('Failed to fetch customers', err);
       toast.error('載入客戶清單失敗');
@@ -104,7 +107,7 @@ export default function CustomerModule() {
     }
     setEditLoading(true);
     try {
-      await axios.patch(`/api/v1/customers/${editTarget.customer_id}`, {
+      await updateCustomer(editTarget.customer_id, {
         customer_name: editName.trim(),
         is_active: editActive,
       });
@@ -132,6 +135,50 @@ export default function CustomerModule() {
       toast.error(Array.isArray(detail) ? detail.join(', ') : String(detail));
     } finally {
       setDeleteLoading(false);
+    }
+  };
+
+  const openAvl = async (customer: Customer) => {
+    setAvlTarget(customer);
+    setSelectedVendorIds(parseApprovedVendorIds(customer.approved_avl));
+    setAvlLoading(true);
+    try {
+      const list = await getVendors();
+      setVendors(list.filter((v) => v.is_active));
+    } catch {
+      toast.error('載入供應商清單失敗');
+      setAvlTarget(null);
+    } finally {
+      setAvlLoading(false);
+    }
+  };
+
+  const toggleVendor = (vendorId: number) => {
+    setSelectedVendorIds((current) =>
+      current.includes(vendorId)
+        ? current.filter((id) => id !== vendorId)
+        : [...current, vendorId]
+    );
+  };
+
+  const handleSaveAvl = async () => {
+    if (!avlTarget) return;
+    setAvlSaving(true);
+    try {
+      await updateCustomer(avlTarget.customer_id, {
+        approved_avl:
+          selectedVendorIds.length === 0
+            ? null
+            : { approved_vendors: selectedVendorIds },
+      });
+      toast.success('AVL 已更新');
+      setAvlTarget(null);
+      await fetchCustomers();
+    } catch (err: any) {
+      const detail = err.response?.data?.detail || '更新 AVL 失敗';
+      toast.error(Array.isArray(detail) ? detail.join(', ') : String(detail));
+    } finally {
+      setAvlSaving(false);
     }
   };
 
@@ -181,6 +228,7 @@ export default function CustomerModule() {
                 <tr className="border-b border-slate-200">
                   <th className="text-left py-3 px-4 text-sm font-medium text-slate-600">客戶代碼</th>
                   <th className="text-left py-3 px-4 text-sm font-medium text-slate-600">客戶名稱</th>
+                  <th className="text-center py-3 px-4 text-sm font-medium text-slate-600">核可供應商</th>
                   <th className="text-center py-3 px-4 text-sm font-medium text-slate-600">啟用狀態</th>
                   {isAdmin && (
                     <th className="text-center py-3 px-4 text-sm font-medium text-slate-600">操作</th>
@@ -188,58 +236,78 @@ export default function CustomerModule() {
                 </tr>
               </thead>
               <tbody>
-                {customers.map((customer) => (
-                  <tr
-                    key={customer.customer_id}
-                    className="border-b border-slate-100 hover:bg-slate-50"
-                  >
-                    <td className="py-3 px-4 text-sm font-mono text-slate-900">
-                      {customer.customer_code}
-                    </td>
-                    <td className="py-3 px-4 text-sm text-slate-900">{customer.customer_name}</td>
-                    <td className="py-3 px-4 text-center">
-                      {customer.is_active ? (
-                        <span
-                          className="inline-flex items-center gap-1 px-2 py-1 rounded text-xs font-medium bg-green-100 text-green-700"
-                          title="is_active=true"
-                        >
-                          <CheckCircle className="size-3" />
-                          啟用
-                        </span>
-                      ) : (
-                        <span
-                          className="inline-flex items-center gap-1 px-2 py-1 rounded text-xs font-medium bg-red-100 text-red-700"
-                          title="is_active=false"
-                        >
-                          <XCircle className="size-3" />
-                          停用
-                        </span>
-                      )}
-                    </td>
-                    {isAdmin && (
+                {customers.map((customer) => {
+                  const avlCount = parseApprovedVendorIds(customer.approved_avl).length;
+                  return (
+                    <tr
+                      key={customer.customer_id}
+                      className="border-b border-slate-100 hover:bg-slate-50"
+                    >
+                      <td className="py-3 px-4 text-sm font-mono text-slate-900">
+                        {customer.customer_code}
+                      </td>
+                      <td className="py-3 px-4 text-sm text-slate-900">{customer.customer_name}</td>
+                      <td className="py-3 px-4 text-center text-sm text-slate-700">
+                        {avlCount === 0 ? '未設定' : `${avlCount} 家`}
+                      </td>
                       <td className="py-3 px-4 text-center">
-                        <div className="flex items-center justify-center gap-1">
-                          <Button type="button" variant="ghost" size="sm" onClick={() => openEdit(customer)}>
-                            <Pencil className="size-3" />
-                            編輯
-                          </Button>
-                          {customer.is_active && (
+                        {customer.is_active ? (
+                          <span
+                            className="inline-flex items-center gap-1 px-2 py-1 rounded text-xs font-medium bg-green-100 text-green-700"
+                            title="is_active=true"
+                          >
+                            <CheckCircle className="size-3" />
+                            啟用
+                          </span>
+                        ) : (
+                          <span
+                            className="inline-flex items-center gap-1 px-2 py-1 rounded text-xs font-medium bg-red-100 text-red-700"
+                            title="is_active=false"
+                          >
+                            <XCircle className="size-3" />
+                            停用
+                          </span>
+                        )}
+                      </td>
+                      {isAdmin && (
+                        <td className="py-3 px-4 text-center">
+                          <div className="flex items-center justify-center gap-1 flex-wrap">
                             <Button
                               type="button"
                               variant="ghost"
                               size="sm"
-                              className="text-red-600 hover:text-red-700"
-                              onClick={() => setDeleteTarget(customer)}
+                              onClick={() => openAvl(customer)}
                             >
-                              <Trash2 className="size-3" />
-                              刪除
+                              <ListChecks className="size-3" />
+                              AVL 設定
                             </Button>
-                          )}
-                        </div>
-                      </td>
-                    )}
-                  </tr>
-                ))}
+                            <Button
+                              type="button"
+                              variant="ghost"
+                              size="sm"
+                              onClick={() => openEdit(customer)}
+                            >
+                              <Pencil className="size-3" />
+                              編輯
+                            </Button>
+                            {customer.is_active && (
+                              <Button
+                                type="button"
+                                variant="ghost"
+                                size="sm"
+                                className="text-red-600 hover:text-red-700"
+                                onClick={() => setDeleteTarget(customer)}
+                              >
+                                <Trash2 className="size-3" />
+                                刪除
+                              </Button>
+                            )}
+                          </div>
+                        </td>
+                      )}
+                    </tr>
+                  );
+                })}
               </tbody>
             </table>
           </div>
@@ -370,6 +438,54 @@ export default function CustomerModule() {
             >
               <Trash2 className="size-4" />
               {deleteLoading ? '處理中...' : '確認刪除'}
+            </Button>
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
+
+      {/* AVL settings */}
+      <Dialog open={!!avlTarget} onOpenChange={(open) => !open && setAvlTarget(null)}>
+        <DialogContent className="max-w-lg">
+          <DialogHeader>
+            <DialogTitle>AVL 設定</DialogTitle>
+            <DialogDescription>
+              設定「{avlTarget?.customer_code}」核可供應商。未設定 AVL = 不過濾,配貨時所有供應商批次皆可用
+            </DialogDescription>
+          </DialogHeader>
+          {avlLoading ? (
+            <div className="flex justify-center py-8">
+              <div className="animate-spin rounded-full h-8 w-8 border-b-2 border-blue-600" />
+            </div>
+          ) : vendors.length === 0 ? (
+            <p className="text-sm text-slate-500 py-4">尚無供應商資料</p>
+          ) : (
+            <div className="max-h-72 space-y-2 overflow-y-auto">
+              {vendors.map((vendor) => {
+                const id = Number(vendor.vendor_id);
+                return (
+                  <label
+                    key={vendor.vendor_id}
+                    className="flex items-center gap-3 rounded border border-slate-200 px-3 py-2 text-sm hover:bg-slate-50"
+                  >
+                    <input
+                      type="checkbox"
+                      checked={selectedVendorIds.includes(id)}
+                      onChange={() => toggleVendor(id)}
+                      disabled={avlSaving}
+                    />
+                    <span className="font-mono text-slate-800">{vendor.vendor_code}</span>
+                    <span className="text-slate-600">{vendor.vendor_name}</span>
+                  </label>
+                );
+              })}
+            </div>
+          )}
+          <DialogFooter>
+            <Button type="button" variant="outline" onClick={() => setAvlTarget(null)}>
+              取消
+            </Button>
+            <Button type="button" onClick={handleSaveAvl} disabled={avlLoading || avlSaving}>
+              {avlSaving ? '儲存中...' : '儲存 AVL'}
             </Button>
           </DialogFooter>
         </DialogContent>

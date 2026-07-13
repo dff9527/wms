@@ -35,6 +35,24 @@ export interface PickWaveTaskWithPicking extends PickWaveTask {
   isConfirmed: boolean; // Whether this task is confirmed
 }
 
+export interface PackingListLot {
+  internalLotNumber: string;
+  internalSku: string;
+  qty: number;
+  location: string | null;
+  receiveDate: string;
+}
+
+export interface PackingListItem {
+  sku: string;
+  lots: PackingListLot[];
+}
+
+export interface PackingList {
+  soNumber: string;
+  items: PackingListItem[];
+}
+
 export function mapSalesOrderItem(raw: any): SalesOrderItem {
   return {
     soId: Number(raw?.soId ?? raw?.so_id ?? 0),

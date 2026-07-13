@@ -14,6 +14,7 @@ import {
   Users,
   ClipboardCheck,
   FileText,
+  PackagePlus,
 } from 'lucide-react';
 import {
   Link,
@@ -35,6 +36,7 @@ import UserAdminModule from './components/UserAdminModule';
 import CustomerModule from './components/CustomerModule';
 import CycleCountModule from './components/CycleCountModule';
 import ReportsModule from './components/ReportsModule';
+import ReplenishmentModule from './components/ReplenishmentModule';
 import {
   Sidebar,
   SidebarContent,
@@ -244,6 +246,7 @@ export default function App() {
       items: [
         { path: '/receiving', label: '收貨管理', icon: Package },
         { path: '/picking', label: '揀貨出庫', icon: TruckIcon },
+        { path: '/replenishment', label: '補貨管理', icon: PackagePlus },
         { path: '/cycle-counts', label: '盤點管理', icon: ClipboardCheck },
       ],
     },
@@ -339,6 +342,7 @@ export default function App() {
               <Route path="/receiving" element={<ReceivingModule />} />
               <Route path="/inventory" element={<InventoryModule />} />
               <Route path="/picking" element={<PickingModule />} />
+              <Route path="/replenishment" element={<ReplenishmentModule />} />
               <Route path="/cycle-counts" element={<CycleCountModule />} />
               <Route path="/trace" element={<TraceRoute />} />
               <Route path="/reports" element={<ReportsModule />} />

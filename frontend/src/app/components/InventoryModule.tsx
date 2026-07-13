@@ -8,10 +8,12 @@ import {
   MapPin,
   MoveRight,
   Pencil,
+  RotateCcw,
   Scissors,
   Search,
   SlidersHorizontal,
   Trash2,
+  Truck,
 } from 'lucide-react';
 import { toast } from 'sonner';
 import type { InventoryLotRow, InventoryLotRowStatus } from '../types/wms-inventory';
@@ -25,6 +27,7 @@ import {
   useVoidLotMutation,
 } from '../api/inventory';
 import type { InventorySortBy } from '../api/inventory';
+import { useCustomerReturnMutation, useSupplierReturnMutation } from '../api/returns';
 import { getRole } from '../api/auth';
 import { exportCsv } from '../utils/exportCsv';
 import { Button } from './ui/button';
@@ -77,6 +80,7 @@ export default function InventoryModule() {
   const role = getRole();
   const isAdmin = role === 'admin';
   const canOperateLots = ['admin', 'supervisor'].includes(role);
+  const canSupplierReturn = ['admin', 'supervisor'].includes(role);
 
   const [searchTerm, setSearchTerm] = useState('');
   const [debouncedSearch, setDebouncedSearch] = useState('');
@@ -85,12 +89,17 @@ export default function InventoryModule() {
   const [sortBy, setSortBy] = useState<InventorySortBy>('receive_date');
   const [sortOrder, setSortOrder] = useState<'asc' | 'desc'>('desc');
   const [selectedLot, setSelectedLot] = useState<InventoryLotRow | null>(null);
-  const [actionForm, setActionForm] = useState<'adjust' | 'split' | 'move' | null>(null);
+  const [actionForm, setActionForm] = useState<
+    'adjust' | 'split' | 'move' | 'customerReturn' | 'supplierReturn' | null
+  >(null);
   const [adjustQty, setAdjustQty] = useState('');
   const [adjustReason, setAdjustReason] = useState('');
   const [splitQty, setSplitQty] = useState('');
   const [moveLocation, setMoveLocation] = useState('');
   const [moveReason, setMoveReason] = useState('');
+  const [returnQty, setReturnQty] = useState('');
+  const [returnReason, setReturnReason] = useState('');
+  const [returnReference, setReturnReference] = useState('');
   const [actionError, setActionError] = useState<string | null>(null);
   const [editLot, setEditLot] = useState<InventoryLotRow | null>(null);
   const [editLocationCode, setEditLocationCode] = useState('');
@@ -103,6 +112,8 @@ export default function InventoryModule() {
   const mslMutation = useMslBagMutation();
   const updateLotMutation = useUpdateLotMutation();
   const voidLotMutation = useVoidLotMutation();
+  const customerReturnMutation = useCustomerReturnMutation();
+  const supplierReturnMutation = useSupplierReturnMutation();
   useEffect(() => {
     const timeout = window.setTimeout(() => {
       setDebouncedSearch(searchTerm.trim());
@@ -180,6 +191,9 @@ export default function InventoryModule() {
     setSplitQty('');
     setMoveLocation('');
     setMoveReason('');
+    setReturnQty('');
+    setReturnReason('');
+    setReturnReference('');
     setActionError(null);
   };
 
@@ -260,6 +274,67 @@ export default function InventoryModule() {
       closeDetailDialog();
     } catch (err) {
       toast.error(errDetail(err));
+    }
+  };
+
+  const handleCustomerReturn = async () => {
+    if (!selectedLot) return;
+    const qty = parseInt(returnQty, 10);
+    if (!qty || qty <= 0) {
+      setActionError('退貨數量必須為正整數');
+      return;
+    }
+    if (!returnReason.trim()) {
+      setActionError('原因為必填');
+      return;
+    }
+    setActionError(null);
+    try {
+      await customerReturnMutation.mutateAsync({
+        lotId: selectedLot.id,
+        quantity: qty,
+        reason: returnReason.trim(),
+        reference: returnReference.trim() || undefined,
+      });
+      toast.success('客退成功');
+      closeDetailDialog();
+    } catch (err) {
+      const message = errDetail(err);
+      setActionError(message);
+      toast.error(message);
+    }
+  };
+
+  const handleSupplierReturn = async () => {
+    if (!selectedLot) return;
+    const qty = parseInt(returnQty, 10);
+    const available = selectedLot.qtyOnHand - selectedLot.qtyReserved;
+    if (!qty || qty <= 0) {
+      setActionError('退貨數量必須為正整數');
+      return;
+    }
+    if (qty > available) {
+      setActionError(`數量不可超過可用量 ${available.toLocaleString()}`);
+      return;
+    }
+    if (!returnReason.trim()) {
+      setActionError('原因為必填');
+      return;
+    }
+    setActionError(null);
+    try {
+      await supplierReturnMutation.mutateAsync({
+        lotId: selectedLot.id,
+        quantity: qty,
+        reason: returnReason.trim(),
+        reference: returnReference.trim() || undefined,
+      });
+      toast.success('退供應商成功');
+      closeDetailDialog();
+    } catch (err) {
+      const message = errDetail(err);
+      setActionError(message);
+      toast.error(message);
     }
   };
 
@@ -680,6 +755,107 @@ export default function InventoryModule() {
                 </div>
               )}
 
+              {(String(selectedLot.status).toUpperCase() === 'SHIPPED' || canSupplierReturn) && (
+                <div className="space-y-3 border-t border-slate-200 pt-4">
+                  <div className="flex flex-wrap gap-2">
+                    {String(selectedLot.status).toUpperCase() === 'SHIPPED' && (
+                      <button
+                        type="button"
+                        onClick={() => {
+                          setActionForm(actionForm === 'customerReturn' ? null : 'customerReturn');
+                          setActionError(null);
+                          setReturnQty('');
+                          setReturnReason('');
+                          setReturnReference('');
+                        }}
+                        className={`flex items-center gap-2 rounded-lg px-4 py-2 text-sm font-medium transition-colors ${actionForm === 'customerReturn' ? 'bg-amber-600 text-white' : 'bg-slate-100 text-slate-700 hover:bg-slate-200'}`}
+                      >
+                        <RotateCcw className="size-4" />
+                        客退
+                      </button>
+                    )}
+                    {canSupplierReturn && (
+                      <button
+                        type="button"
+                        onClick={() => {
+                          setActionForm(actionForm === 'supplierReturn' ? null : 'supplierReturn');
+                          setActionError(null);
+                          setReturnQty('');
+                          setReturnReason('');
+                          setReturnReference('');
+                        }}
+                        className={`flex items-center gap-2 rounded-lg px-4 py-2 text-sm font-medium transition-colors ${actionForm === 'supplierReturn' ? 'bg-amber-600 text-white' : 'bg-slate-100 text-slate-700 hover:bg-slate-200'}`}
+                      >
+                        <Truck className="size-4" />
+                        退供應商
+                      </button>
+                    )}
+                  </div>
+
+                  {(actionForm === 'customerReturn' || actionForm === 'supplierReturn') && (
+                    <div className="space-y-3 rounded-lg bg-slate-50 p-4">
+                      <div className="grid grid-cols-2 gap-3">
+                        <div>
+                          <label className="mb-1 block text-xs text-slate-600">
+                            數量
+                            {actionForm === 'supplierReturn'
+                              ? `（可用 ${(selectedLot.qtyOnHand - selectedLot.qtyReserved).toLocaleString()}）`
+                              : ''}
+                          </label>
+                          <Input
+                            type="number"
+                            min="1"
+                            value={returnQty}
+                            onChange={(e) => setReturnQty(e.target.value)}
+                            placeholder="1"
+                          />
+                        </div>
+                        <div>
+                          <label className="mb-1 block text-xs text-slate-600">參考單號（選填）</label>
+                          <Input
+                            type="text"
+                            value={returnReference}
+                            onChange={(e) => setReturnReference(e.target.value)}
+                            placeholder="RMA / 客訴單號"
+                          />
+                        </div>
+                      </div>
+                      <div>
+                        <label className="mb-1 block text-xs text-slate-600">原因 *</label>
+                        <Input
+                          type="text"
+                          value={returnReason}
+                          onChange={(e) => setReturnReason(e.target.value)}
+                          placeholder="必填"
+                        />
+                      </div>
+                      <Button
+                        type="button"
+                        onClick={
+                          actionForm === 'customerReturn'
+                            ? handleCustomerReturn
+                            : handleSupplierReturn
+                        }
+                        disabled={
+                          actionForm === 'customerReturn'
+                            ? customerReturnMutation.isPending
+                            : supplierReturnMutation.isPending
+                        }
+                      >
+                        {actionForm === 'customerReturn'
+                          ? customerReturnMutation.isPending
+                            ? '處理中…'
+                            : '確認客退'
+                          : supplierReturnMutation.isPending
+                            ? '處理中…'
+                            : '確認退供應商'}
+                      </Button>
+                      {actionError && <p className="text-sm text-red-600">{actionError}</p>}
+                    </div>
+                  )}
+                </div>
+              )}
+
               {isAdmin && (
                 <div className="border-t border-slate-200 pt-4">
                   <div className="flex flex-wrap gap-2">
@@ -820,7 +996,10 @@ export default function InventoryModule() {
                     </div>
                   )}
 
-                  {actionError && <p className="text-sm text-red-600">{actionError}</p>}
+                  {actionError &&
+                    (actionForm === 'adjust' || actionForm === 'split' || actionForm === 'move') && (
+                      <p className="text-sm text-red-600">{actionError}</p>
+                    )}
                 </div>
               )}
             </div>
