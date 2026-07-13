@@ -14,6 +14,7 @@ from app.models.order import (
 
 # FIX: fix_2 — Add User model import to register users table in Base.metadata
 from app.models.user import User
+from app.models.cycle_count import CycleCount, CycleCountLine
 
 __all__ = [
     "Warehouse",
@@ -32,4 +33,6 @@ __all__ = [
     "PickTask",
     # FIX: fix_2 — Export User so importing app.models registers the users table
     "User",
+    "CycleCount",
+    "CycleCountLine",
 ]

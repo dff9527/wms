@@ -12,6 +12,7 @@ import {
   EyeOff,
   Building2,
   Users,
+  ClipboardCheck,
 } from 'lucide-react';
 import {
   Link,
@@ -31,6 +32,7 @@ import DashboardModule from './components/DashboardModule';
 import BarcodeRuleModule from './components/BarcodeRuleModule';
 import UserAdminModule from './components/UserAdminModule';
 import CustomerModule from './components/CustomerModule';
+import CycleCountModule from './components/CycleCountModule';
 import {
   Sidebar,
   SidebarContent,
@@ -238,6 +240,7 @@ export default function App() {
       items: [
         { path: '/receiving', label: '收貨管理', icon: Package },
         { path: '/picking', label: '揀貨出庫', icon: TruckIcon },
+        { path: '/cycle-counts', label: '盤點管理', icon: ClipboardCheck },
       ],
     },
     {
@@ -331,6 +334,7 @@ export default function App() {
               <Route path="/receiving" element={<ReceivingModule />} />
               <Route path="/inventory" element={<InventoryModule />} />
               <Route path="/picking" element={<PickingModule />} />
+              <Route path="/cycle-counts" element={<CycleCountModule />} />
               <Route path="/trace" element={<TraceRoute />} />
               <Route path="/barcode-rules" element={<BarcodeRuleModule />} />
               <Route path="/customers" element={<CustomerModule />} />
