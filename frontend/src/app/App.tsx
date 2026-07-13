@@ -1,6 +1,23 @@
 import { useState, useEffect, useCallback } from 'react';
-import { Tabs, TabsContent, TabsList, TabsTrigger } from '@radix-ui/react-tabs';
-import { Package, Warehouse, TruckIcon, Search, BarChart3, ScanLine, LogOut, KeyRound } from 'lucide-react';
+import {
+  Package,
+  Warehouse,
+  TruckIcon,
+  Search,
+  BarChart3,
+  ScanLine,
+  LogOut,
+  KeyRound,
+} from 'lucide-react';
+import {
+  Link,
+  Navigate,
+  Route,
+  Routes,
+  useLocation,
+  useNavigate,
+  useSearchParams,
+} from 'react-router';
 import ChangePasswordDialog from './components/ChangePasswordDialog';
 import ReceivingModule from './components/ReceivingModule';
 import InventoryModule from './components/InventoryModule';
@@ -11,6 +28,21 @@ import BarcodeRuleModule from './components/BarcodeRuleModule';
 import UserAdminModule from './components/UserAdminModule';
 import CustomerModule from './components/CustomerModule';
 import {
+  Sidebar,
+  SidebarContent,
+  SidebarFooter,
+  SidebarGroup,
+  SidebarGroupContent,
+  SidebarGroupLabel,
+  SidebarHeader,
+  SidebarInset,
+  SidebarMenu,
+  SidebarMenuButton,
+  SidebarMenuItem,
+  SidebarProvider,
+  SidebarTrigger,
+} from './components/ui/sidebar';
+import {
   login,
   logout,
   initAuth,
@@ -20,8 +52,20 @@ import {
   getRole,
 } from './api/auth';
 
+function TraceRoute() {
+  const [searchParams, setSearchParams] = useSearchParams();
+
+  return (
+    <TraceabilityModule
+      initialLot={searchParams.get('lot') ?? ''}
+      onLotChange={(lot) => setSearchParams({ lot })}
+    />
+  );
+}
+
 export default function App() {
-  const [activeTab, setActiveTab] = useState('dashboard');
+  const location = useLocation();
+  const navigate = useNavigate();
   const [isAuthenticated, setIsAuthenticated] = useState(false);
   const [isLoading, setIsLoading] = useState(true);
   const [username, setUsername] = useState('');
@@ -91,8 +135,8 @@ export default function App() {
     logout();
     setIsAuthenticated(false);
     setUsername('');
-    setActiveTab('dashboard');
-  }, []);
+    navigate('/dashboard', { replace: true });
+  }, [navigate]);
 
   // Render login form when not authenticated
   if (!isAuthenticated) {
@@ -158,140 +202,122 @@ export default function App() {
   }
 
   // Render main app when authenticated
-  const roleLabel = { admin: '管理員', qc: '品管', supervisor: '主管', operator: '作業員' }[getRole()] ?? '';
+  const roleLabel =
+    { admin: '管理員', qc: '品管', supervisor: '主管', operator: '作業員' }[getRole()] ?? '';
+
+  const navigationGroups = [
+    {
+      label: '作業',
+      items: [
+        { path: '/receiving', label: '收貨管理', icon: Package },
+        { path: '/picking', label: '揀貨出庫', icon: TruckIcon },
+      ],
+    },
+    {
+      label: '查詢',
+      items: [
+        { path: '/dashboard', label: '總覽', icon: BarChart3 },
+        { path: '/inventory', label: '庫存管理', icon: Warehouse },
+        { path: '/trace', label: '追溯管理', icon: Search },
+      ],
+    },
+    {
+      label: '設定',
+      items: [
+        { path: '/barcode-rules', label: '條碼規則', icon: ScanLine },
+        { path: '/customers', label: '客戶管理', icon: Package },
+        ...(getRole() === 'admin' ? [{ path: '/users', label: '使用者管理', icon: Search }] : []),
+      ],
+    },
+  ];
 
   return (
-    <div className="size-full bg-slate-50">
-      <header className="bg-white border-b border-slate-200 px-6 py-4">
-        <div className="flex items-center justify-between">
-          <div className="flex items-center gap-3">
-            <div className="size-10 bg-blue-600 rounded-lg flex items-center justify-center">
-              <Warehouse className="size-6 text-white" />
+    <SidebarProvider>
+      <Sidebar collapsible="icon">
+        <SidebarHeader className="border-b border-sidebar-border p-3">
+          <Link to="/dashboard" className="flex items-center gap-3 overflow-hidden">
+            <div className="flex size-9 shrink-0 items-center justify-center rounded-lg bg-blue-600">
+              <Warehouse className="size-5 text-white" />
             </div>
-            <div>
-              <h1 className="text-xl font-bold text-slate-900">半導體 WMS 系統</h1>
-              <p className="text-sm text-slate-500">Semiconductor Warehouse Management System</p>
+            <div className="min-w-0 group-data-[collapsible=icon]:hidden">
+              <p className="truncate text-sm font-bold">半導體 WMS</p>
+              <p className="truncate text-xs text-sidebar-foreground/60">Warehouse Management</p>
             </div>
+          </Link>
+        </SidebarHeader>
+        <SidebarContent>
+          {navigationGroups.map((group) => (
+            <SidebarGroup key={group.label}>
+              <SidebarGroupLabel>{group.label}</SidebarGroupLabel>
+              <SidebarGroupContent>
+                <SidebarMenu>
+                  {group.items.map((item) => (
+                    <SidebarMenuItem key={item.path}>
+                      <SidebarMenuButton
+                        asChild
+                        isActive={location.pathname === item.path}
+                        tooltip={item.label}
+                      >
+                        <Link to={item.path}>
+                          <item.icon />
+                          <span>{item.label}</span>
+                        </Link>
+                      </SidebarMenuButton>
+                    </SidebarMenuItem>
+                  ))}
+                </SidebarMenu>
+              </SidebarGroupContent>
+            </SidebarGroup>
+          ))}
+        </SidebarContent>
+        <SidebarFooter className="border-t border-sidebar-border p-2">
+          <div className="px-2 py-1 group-data-[collapsible=icon]:hidden">
+            <p className="truncate text-sm font-medium">{username}</p>
+            <p className="text-xs text-sidebar-foreground/60">{roleLabel}</p>
           </div>
-          <div className="flex items-center gap-4">
-            <div className="text-right">
-              <p className="text-sm font-medium text-slate-700">操作員: {username}{roleLabel ? `(${roleLabel})` : ''}</p>
-            </div>
-            <button
-              onClick={() => setShowPwDialog(true)}
-              className="flex items-center gap-2 px-4 py-2 text-sm font-medium text-slate-600 hover:text-amber-600 hover:bg-amber-50 rounded-lg transition-colors"
-              title="修改密碼"
-            >
-              <KeyRound className="size-4" />
-              改密碼
-            </button>
-            <button
-              onClick={handleLogout}
-              className="flex items-center gap-2 px-4 py-2 text-sm font-medium text-slate-600 hover:text-red-600 hover:bg-red-50 rounded-lg transition-colors"
-              title="登出"
-            >
-              <LogOut className="size-4" />
-              登出
-            </button>
-          </div>
-        </div>
-      </header>
+          <SidebarMenu>
+            <SidebarMenuItem>
+              <SidebarMenuButton tooltip="修改密碼" onClick={() => setShowPwDialog(true)}>
+                <KeyRound />
+                <span>修改密碼</span>
+              </SidebarMenuButton>
+            </SidebarMenuItem>
+            <SidebarMenuItem>
+              <SidebarMenuButton tooltip="登出" onClick={handleLogout}>
+                <LogOut />
+                <span>登出</span>
+              </SidebarMenuButton>
+            </SidebarMenuItem>
+          </SidebarMenu>
+        </SidebarFooter>
+      </Sidebar>
 
-      <Tabs value={activeTab} onValueChange={setActiveTab} className="size-full flex flex-col">
-        <div className="bg-white border-b border-slate-200 px-6">
-          <TabsList className="flex gap-1">
-            <TabsTrigger
-              value="dashboard"
-              className="flex items-center gap-2 px-4 py-3 text-sm font-medium text-slate-600 hover:text-slate-900 border-b-2 border-transparent data-[state=active]:border-blue-600 data-[state=active]:text-blue-600 transition-colors"
-            >
-              <BarChart3 className="size-4" />
-              總覽
-            </TabsTrigger>
-            <TabsTrigger
-              value="receiving"
-              className="flex items-center gap-2 px-4 py-3 text-sm font-medium text-slate-600 hover:text-slate-900 border-b-2 border-transparent data-[state=active]:border-blue-600 data-[state=active]:text-blue-600 transition-colors"
-            >
-              <Package className="size-4" />
-              收貨管理
-            </TabsTrigger>
-            <TabsTrigger
-              value="inventory"
-              className="flex items-center gap-2 px-4 py-3 text-sm font-medium text-slate-600 hover:text-slate-900 border-b-2 border-transparent data-[state=active]:border-blue-600 data-[state=active]:text-blue-600 transition-colors"
-            >
-              <Warehouse className="size-4" />
-              庫存管理
-            </TabsTrigger>
-            <TabsTrigger
-              value="picking"
-              className="flex items-center gap-2 px-4 py-3 text-sm font-medium text-slate-600 hover:text-slate-900 border-b-2 border-transparent data-[state=active]:border-blue-600 data-[state=active]:text-blue-600 transition-colors"
-            >
-              <TruckIcon className="size-4" />
-              揀貨出庫
-            </TabsTrigger>
-            <TabsTrigger
-              value="traceability"
-              className="flex items-center gap-2 px-4 py-3 text-sm font-medium text-slate-600 hover:text-slate-900 border-b-2 border-transparent data-[state=active]:border-blue-600 data-[state=active]:text-blue-600 transition-colors"
-            >
-              <Search className="size-4" />
-              追溯管理
-            </TabsTrigger>
-            <TabsTrigger
-              value="barcode-rules"
-              className="flex items-center gap-2 px-4 py-3 text-sm font-medium text-slate-600 hover:text-slate-900 border-b-2 border-transparent data-[state=active]:border-blue-600 data-[state=active]:text-blue-600 transition-colors"
-            >
-              <ScanLine className="size-4" />
-              條碼規則
-            </TabsTrigger>
-            <TabsTrigger
-              value="customers"
-              className="flex items-center gap-2 px-4 py-3 text-sm font-medium text-slate-600 hover:text-slate-900 border-b-2 border-transparent data-[state=active]:border-blue-600 data-[state=active]:text-blue-600 transition-colors"
-            >
-              <Package className="size-4" />
-              客戶管理
-            </TabsTrigger>
-            {getRole() === 'admin' && (
-              <TabsTrigger
-                value="users"
-                className="flex items-center gap-2 px-4 py-3 text-sm font-medium text-slate-600 hover:text-slate-900 border-b-2 border-transparent data-[state=active]:border-blue-600 data-[state=active]:text-blue-600 transition-colors"
-              >
-                <Search className="size-4" />
-                使用者管理
-              </TabsTrigger>
-            )}
-          </TabsList>
+      <SidebarInset className="min-w-0 bg-slate-50">
+        <header className="flex h-14 shrink-0 items-center border-b border-slate-200 bg-white px-4 md:hidden">
+          <SidebarTrigger />
+          <span className="ml-2 font-semibold text-slate-900">半導體 WMS 系統</span>
+        </header>
+        <div className="min-h-0 flex-1 overflow-auto">
+          <Routes>
+            <Route path="/dashboard" element={<DashboardModule />} />
+            <Route path="/receiving" element={<ReceivingModule />} />
+            <Route path="/inventory" element={<InventoryModule />} />
+            <Route path="/picking" element={<PickingModule />} />
+            <Route path="/trace" element={<TraceRoute />} />
+            <Route path="/barcode-rules" element={<BarcodeRuleModule />} />
+            <Route path="/customers" element={<CustomerModule />} />
+            <Route
+              path="/users"
+              element={
+                getRole() === 'admin' ? <UserAdminModule /> : <Navigate to="/dashboard" replace />
+              }
+            />
+            <Route path="*" element={<Navigate to="/dashboard" replace />} />
+          </Routes>
         </div>
-
-        <div className="flex-1 overflow-auto">
-          <TabsContent value="dashboard" className="size-full p-0">
-            <DashboardModule />
-          </TabsContent>
-          <TabsContent value="receiving" className="size-full p-0">
-            <ReceivingModule />
-          </TabsContent>
-          <TabsContent value="inventory" className="size-full p-0">
-            <InventoryModule />
-          </TabsContent>
-          <TabsContent value="picking" className="size-full p-0">
-            <PickingModule />
-          </TabsContent>
-          <TabsContent value="traceability" className="size-full p-0">
-            <TraceabilityModule />
-          </TabsContent>
-          <TabsContent value="barcode-rules" className="size-full p-0">
-            <BarcodeRuleModule />
-          </TabsContent>
-          <TabsContent value="customers" className="size-full p-0">
-            <CustomerModule />
-          </TabsContent>
-          {getRole() === 'admin' && (
-            <TabsContent value="users" className="size-full p-0">
-              <UserAdminModule />
-            </TabsContent>
-          )}
-        </div>
-      </Tabs>
+      </SidebarInset>
 
       <ChangePasswordDialog open={showPwDialog} onClose={() => setShowPwDialog(false)} />
-    </div>
+    </SidebarProvider>
   );
 }

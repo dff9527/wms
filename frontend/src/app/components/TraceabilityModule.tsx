@@ -1,13 +1,25 @@
-import { useState } from 'react';
+import { useEffect, useState } from 'react';
 import axios from 'axios';
 import { Search, Package, TruckIcon, Factory, Building2, ChevronRight } from 'lucide-react';
 import type { TraceForwardResult } from '../types/wms-inventory';
 
-export default function TraceabilityModule() {
-  const [searchBarcode, setSearchBarcode] = useState('');
+interface TraceabilityModuleProps {
+  initialLot?: string;
+  onLotChange?: (lot: string) => void;
+}
+
+export default function TraceabilityModule({
+  initialLot = '',
+  onLotChange,
+}: TraceabilityModuleProps = {}) {
+  const [searchBarcode, setSearchBarcode] = useState(initialLot);
   const [traceResult, setTraceResult] = useState<TraceForwardResult | null>(null);
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
+
+  useEffect(() => {
+    setSearchBarcode(initialLot);
+  }, [initialLot]);
 
   const handleSearch = async () => {
     if (!searchBarcode.trim()) return;
@@ -21,6 +33,8 @@ export default function TraceabilityModule() {
       return;
     }
 
+    onLotChange?.(trimmed);
+
     // Reset stale state before new search
     setTraceResult(null);
     setLoading(true);
@@ -30,7 +44,7 @@ export default function TraceabilityModule() {
       // Try forward trace first
       try {
         const response = await axios.get('/api/v1/trace/forward', {
-          params: { query: searchBarcode },
+          params: { query: trimmed },
         });
         if (response.data) {
           mapAndSetResult(response.data);
@@ -46,14 +60,14 @@ export default function TraceabilityModule() {
       // Fallback: backward trace
       try {
         const backResponse = await axios.get('/api/v1/trace/backward', {
-          params: { internal_barcode: searchBarcode },
+          params: { internal_barcode: trimmed },
         });
         if (backResponse.data) {
           const b = backResponse.data;
           // Construct a partial TraceForwardResult from backward data
           // Backward endpoint returns exactly: { internalBarcode, internalLotNumber, vendorLotCode, vendorDateCode, supplierName, originalBarcode }
           const partial: TraceForwardResult = {
-            barcode: b.internalBarcode || searchBarcode,
+            barcode: b.internalBarcode || trimmed,
             type: 'internal_barcode',
             supplier: {
               name: b.supplierName || '',
